@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>管理ページ｜つかまえた。</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;900&display=swap">
+<style>
+:root{--red:#e82c34;--blue:#1c48c4;--orange:#f5821f;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;--line:#dedbe4;--panel:#fff;
+  --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);
+  padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
+[hidden]{display:none!important}
+.wrap{max-width:1100px;margin:0 auto;display:grid;gap:20px}
+h1{margin:0;font-size:1.4rem;font-weight:900}
+h1 span{color:var(--red)}
+.btn{font:inherit;font-weight:700;font-size:.85rem;padding:9px 14px;border:0;cursor:pointer;background:var(--red);color:#fff}
+.btn.blue{background:var(--blue)} .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.danger{background:transparent;color:var(--red);border:1px solid var(--red)}
+.btn.danger.armed{background:var(--red);color:#fff}
+input{font:inherit;padding:10px;border:1px solid var(--line);background:#fff;width:100%}
+label{display:grid;gap:4px;font-size:.82rem;color:var(--muted)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.login{max-width:360px;background:var(--panel);border:1px solid var(--line);padding:20px;display:grid;gap:12px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.stats{display:flex;flex-wrap:wrap;gap:22px}
+.stat b{display:block;font-size:2rem;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat span{font-size:.78rem;color:var(--muted)}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filter{display:flex;gap:6px;flex-wrap:wrap}
+.filter button{font:inherit;font-size:.8rem;padding:6px 10px;border:1px solid var(--line);background:#fff;cursor:pointer}
+.filter button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);display:grid;grid-template-rows:auto 1fr auto;min-width:0}
+.pics{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:#eee}
+.pics div{aspect-ratio:9/16;display:flex;align-items:center;justify-content:center;overflow:hidden;
+  background:repeating-conic-gradient(#e6e3ea 0 25%,#fff 0 50%) 0 0/12px 12px}
+.pics img{max-width:100%;max-height:100%}
+.meta{padding:8px 10px;font-size:.8rem;display:grid;gap:3px}
+.meta .no{font-weight:900;font-size:1rem;font-variant-numeric:tabular-nums}
+.chip{display:inline-block;font-size:.7rem;font-weight:700;padding:1px 7px;color:#fff}
+.chip.none{background:var(--ink)} .chip.soft{background:#8a7fa0} .chip.shape{background:var(--orange)} .chip.blur{background:#5d6a8a}
+.acts{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 10px}
+.acts .btn{font-size:.75rem;padding:6px 9px}
+.status{font-size:.88rem;min-height:1.3em}
+.status.err{color:var(--red)}
+.empty{border:2px dashed var(--line);padding:30px;text-align:center;color:var(--muted)}
+.hint{font-size:.8rem;color:var(--muted);line-height:1.7;margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <h1><span>つかまえた。</span>管理ページ</h1>
+    <button class="btn ghost" id="logout" type="button" hidden>ログアウト</button>
+  </div>
+
+  <form class="login" id="login" hidden>
+    <label>メールアドレス <input id="email" type="email" autocomplete="username" required></label>
+    <label>パスワード <input id="pass" type="password" autocomplete="current-password" required></label>
+    <button class="btn blue" type="submit">ログイン</button>
+    <p class="hint">Supabase の Authentication で作った管理者のアカウントでログインします。</p>
+  </form>
+
+  <section id="main" hidden style="display:grid;gap:18px">
+    <div class="bar">
+      <div class="stats">
+        <div class="stat"><b id="sPeople">–</b><span>参加者（番号を発行した数）</span></div>
+        <div class="stat"><b id="sHands">–</b><span>画像を作った人</span></div>
+        <div class="stat"><b id="sShape">–</b><span>うち「ふんわり・強くぼかす」</span></div>
+      </div>
+      <div class="tools">
+        <button class="btn blue" id="zipMat" type="button">手の素材をまとめて保存</button>
+        <button class="btn ghost" id="zipStory" type="button">ストーリー画像をまとめて保存</button>
+        <button class="btn ghost" id="reload" type="button">更新</button>
+      </div>
+    </div>
+    <div class="filter" id="filter" role="group" aria-label="見え方で絞り込む">
+      <button type="button" data-v="all" aria-pressed="true">すべて</button>
+      <button type="button" data-v="none" aria-pressed="false">そのまま</button>
+      <button type="button" data-v="soft" aria-pressed="false">ふんわり</button>
+      <button type="button" data-v="blur" aria-pressed="false">強くぼかす</button>
+    </div>
+    <p class="hint">1人につき、最後に作った画像（本人が選んだ見え方）を表示しています。左が手の素材（公式投稿メーカーに入れるもの）、右がストーリー画像です。「掲載をやめる」は、その番号の画像と記録をすべて削除します（元に戻せません）。</p>
+    <div class="status" id="status" role="status"></div>
+    <div class="grid" id="grid"></div>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="config.js"></script>
+<script>
+const CFG=window.APP_CONFIG||{}, BUCKET=CFG.BUCKET||"hands";
+const $=id=>document.getElementById(id);
+const LOOK={none:"そのまま",soft:"ふんわり",blur:"強くぼかす",shape:"かたちだけ"};
+const pad=n=>String(n||0).padStart(3,"0");
+let sb=null, latest=[], all=[], urls={}, view="all";
+function say(t,err){ const s=$("status"); s.textContent=t; s.classList.toggle("err",!!err); }
+
+if(!CFG.SUPABASE_URL||!CFG.SUPABASE_ANON_KEY||!window.supabase){
+  document.querySelector(".wrap").insertAdjacentHTML("beforeend",'<p class="empty">config.js に Supabase の URL とキーが入っていません。README の「本番にする」を先に行ってください。</p>');
+}else{
+  sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
+  sb.auth.getSession().then(({data})=>data.session?start():($("login").hidden=false));
+}
+
+$("login").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const {error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("pass").value});
+  if(error){ alert("ログインできませんでした。メールアドレスとパスワードを確認してください。"); return; }
+  start();
+});
+$("logout").addEventListener("click",async()=>{ await sb.auth.signOut(); location.reload(); });
+$("reload").addEventListener("click",load);
+$("filter").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; view=b.dataset.v;
+  document.querySelectorAll("#filter button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render(); });
+
+async function start(){ $("login").hidden=true; $("main").hidden=false; $("logout").hidden=false; load(); }
+
+async function load(){
+  say("読み込み中…");
+  const [people,subs]=await Promise.all([
+    sb.from("participants").select("*",{count:"exact",head:true}),
+    sb.from("submissions").select("*").order("created_at",{ascending:false}).limit(5000),
+  ]);
+  if(subs.error){ say("読み込めませんでした（"+subs.error.message+"）。supabase.sql の管理者のメールアドレスを確認してください。",true); return; }
+  all=subs.data;
+  const seen=new Set(); latest=all.filter(r=>!seen.has(r.participant_no)&&seen.add(r.participant_no));
+  if(!latest.length && !all.length) say("");
+  $("sPeople").textContent=people.count??"–";
+  $("sHands").textContent=latest.length;
+  $("sShape").textContent=latest.filter(r=>r.look==="soft"||r.look==="blur").length;
+  // 表示用の一時URL（1時間有効）
+  const paths=latest.flatMap(r=>[r.image_path,r.story_path].filter(Boolean));
+  urls={};
+  for(let i=0;i<paths.length;i+=100){
+    const {data}=await sb.storage.from(BUCKET).createSignedUrls(paths.slice(i,i+100),3600);
+    (data||[]).forEach(d=>{ if(d.signedUrl) urls[d.path]=d.signedUrl; });
+  }
+  say(""); render();
+}
+
+function render(){
+  const grid=$("grid"); grid.textContent="";
+  const list=latest.filter(r=>view==="all"||r.look===view);
+  if(!list.length){ const e=document.createElement("div"); e.className="empty";
+    e.textContent=latest.length?"この見え方の画像はありません。":"まだ画像がありません。参加者がQRから画像を作ると、ここに並びます。"; grid.append(e); return; }
+  for(const r of list){
+    const card=document.createElement("div"); card.className="card";
+    const pics=document.createElement("div"); pics.className="pics";
+    for(const p of [r.image_path,r.story_path]){ const d=document.createElement("div");
+      if(p&&urls[p]){ const im=document.createElement("img"); im.src=urls[p]; im.alt=""; im.loading="lazy"; d.append(im); }
+      pics.append(d); }
+    const meta=document.createElement("div"); meta.className="meta";
+    const older=all.filter(x=>x.participant_no===r.participant_no).length-1;
+    meta.innerHTML=`<span class="no">No.${pad(r.participant_no)}</span>
+      <span><span class="chip ${r.look||"none"}">${LOOK[r.look]||"そのまま"}</span>　${new Date(r.created_at).toLocaleString("ja-JP")}</span>
+      ${older>0?`<span style="color:var(--muted)">ほかに${older}件（選び直す前の画像）</span>`:""}`;
+    const acts=document.createElement("div"); acts.className="acts";
+    acts.append(btn("素材を保存","ghost",()=>download(r.image_path,`${pad(r.participant_no)}_${r.look}.png`)));
+    if(r.story_path) acts.append(btn("ストーリーを保存","ghost",()=>download(r.story_path,`${pad(r.participant_no)}_story.jpg`)));
+    const del=btn("掲載をやめる","danger",async()=>{
+      if(!del.classList.contains("armed")){ del.classList.add("armed"); del.textContent="本当に削除する"; setTimeout(()=>{del.classList.remove("armed");del.textContent="掲載をやめる";},4000); return; }
+      await removeNumber(r.participant_no);
+    });
+    acts.append(del);
+    card.append(pics,meta,acts); grid.append(card);
+  }
+}
+function btn(t,cls,fn){ const b=document.createElement("button"); b.type="button"; b.className="btn "+cls; b.textContent=t; b.onclick=fn; return b; }
+
+async function blobOf(path){ const {data,error}=await sb.storage.from(BUCKET).download(path); if(error) throw error; return data; }
+function saveBlob(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.append(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000); }
+async function download(path,name){ try{ saveBlob(await blobOf(path),name); }catch(e){ say("保存できませんでした（"+(e.message||e)+"）",true); } }
+
+async function zipAll(kind){
+  const list=latest.filter(r=>view==="all"||r.look===view).filter(r=>kind==="mat"?r.image_path:r.story_path);
+  if(!list.length){ say("保存する画像がありません。"); return; }
+  const zip=new JSZip(); let n=0;
+  for(const r of list){
+    say(`まとめています… ${++n}/${list.length}`);
+    try{ const p=kind==="mat"?r.image_path:r.story_path;
+      zip.file(kind==="mat"?`${pad(r.participant_no)}_${r.look}.png`:`${pad(r.participant_no)}_story.jpg`, await blobOf(p)); }
+    catch(e){ console.warn(e); }
+  }
+  const d=new Date(), ymd=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+  saveBlob(await zip.generateAsync({type:"blob"}), `${kind==="mat"?"hands":"stories"}_${ymd}.zip`);
+  say(`${list.length}人分を保存しました。`);
+}
+$("zipMat").addEventListener("click",()=>zipAll("mat"));
+$("zipStory").addEventListener("click",()=>zipAll("story"));
+
+async function removeNumber(no){
+  const rows=all.filter(r=>r.participant_no===no);
+  const paths=rows.flatMap(r=>[r.image_path,r.story_path].filter(Boolean));
+  say(`No.${pad(no)} を削除しています…`);
+  const rm=await sb.storage.from(BUCKET).remove(paths);
+  if(rm.error){ say("画像を削除できませんでした（"+rm.error.message+"）",true); return; }
+  const dl=await sb.from("submissions").delete().eq("participant_no",no);
+  if(dl.error){ say("記録を削除できませんでした（"+dl.error.message+"）",true); return; }
+  say(`No.${pad(no)} の画像と記録を削除しました。`); load();
+}
+</script>
+</body>
+</html>
