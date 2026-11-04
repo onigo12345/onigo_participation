@@ -236,7 +236,7 @@ const photoForMode = () => (filterMode === "soft" ? softFilter(lastPhoto, lastLm
 async function renderResult() {
   const seq = ++renderSeq;                            // 切り替えを連打しても、最後に押したものだけを表示
   const src = photoForMode();
-  const post = compose(src, lastLm, myNo, false);
+  const post = compose(src, lastLm, myNo, false, lastPhoto);   // 手の形は、加工前の写真から推定する
   if (src !== lastPhoto) free(src);
   const blob = await new Promise((r) => post.toBlob(r, "image/jpeg", 0.92));
   free(post);
@@ -288,7 +288,7 @@ async function generate(photo) {
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const pad = (n) => String(n || 0).padStart(3, "0");
 const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
-const ARM = 0.55, MARGIN = 0.12, BORDER = 0.07;     // 手のひらの長さに対する、腕の長さ・実写の余白・白いふち
+const ARM = 0.55, MARGIN = 0.12, BORDER = 0.07, EDGE_REAL = 0.09;   // EDGE_REAL＝実際の手の輪郭のまわりに残す実写の幅     // 手のひらの長さに対する、腕の長さ・実写の余白・白いふち
 
 function armEndOf(lm, armLen) {
   const ux = lm[0].x - lm[9].x, uy = lm[0].y - lm[9].y, l = Math.hypot(ux, uy) || 1;
@@ -323,16 +323,140 @@ function handMask(w, h, lm, palm, extra, color = "#fff") {
   paintHand(g, lm, palm, extra, palm * ARM);
   const f = blurred(m, Math.max(1, palm * 0.02)); free(m); return f;
 }
-// 手（＋実写の余白）を切り抜く。shape=true は手の部分だけオレンジで塗る
-function cutHand(photo, lm, shape) {
-  const pw = photo.width, ph = photo.height, palm = dist(lm[0], lm[9]);
-  const cut = copyOf(photo), cg = cut.getContext("2d");
-  const mask = handMask(pw, ph, lm, palm, palm * MARGIN);
-  cg.globalCompositeOperation = "destination-in"; cg.drawImage(mask, 0, 0); free(mask);
-  if (shape) {
-    const hs = handMask(pw, ph, lm, palm, palm * 0.04, SHAPE_COLOR);
-    cg.globalCompositeOperation = "source-atop"; cg.drawImage(hs, 0, 0); free(hs);
+/* ---------- 実際の手の形を写真から推定する ----------
+   骨格（関節の点）だけだと、指の太さや手のひらの形が実際とずれる。
+   骨格のまわりで「手の肌の色」に近い所を拾い、本人の手の輪郭に沿ったマスクを作る。
+   うまく拾えない写真（背景が肌に近い色など）は、骨格の形に戻す */
+let shapeCache = { key: null, mask: null };
+function alphaArray(c) { const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data, a = new Uint8Array(c.width * c.height); for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3]; return a; }
+function maskCanvas(a, w, h) {
+  const c = canvas(w, h), g = c.getContext("2d"), id = g.createImageData(w, h);
+  for (let i = 0; i < a.length; i++) { id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = 255; id.data[i * 4 + 3] = a[i]; }
+  g.putImageData(id, 0, 0); return c;
+}
+// 形を r だけ太らせる。手の輪郭からの正確な距離で太らせるので、ふちがなめらかになる
+function edt1d(f, n, d, v, z) {                     // 1列ぶんの「最も近い手までの距離の2乗」
+  let k = 0; v[0] = 0; z[0] = -Infinity; z[1] = Infinity;
+  for (let q = 1; q < n; q++) {
+    let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    while (s <= z[k]) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
+    k++; v[k] = q; z[k] = s; z[k + 1] = Infinity;
   }
+  k = 0;
+  for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) ** 2 + f[v[k]]; }
+}
+function distanceToShape(a, w, h) {
+  const INF = 1e20, D = new Float64Array(w * h), n = Math.max(w, h);
+  const f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+  for (let x = 0; x < w; x++) { for (let y = 0; y < h; y++) f[y] = a[y * w + x] > 127 ? 0 : INF; edt1d(f, h, d, v, z); for (let y = 0; y < h; y++) D[y * w + x] = d[y]; }
+  for (let y = 0; y < h; y++) { for (let x = 0; x < w; x++) f[x] = D[y * w + x]; edt1d(f, w, d, v, z); for (let x = 0; x < w; x++) D[y * w + x] = d[x]; }
+  return D;
+}
+// 太らせたあと、外側の線をさらに大まかな曲線にする（指の間のくぼみもゆるやかに）
+function growRound(maskC, r, round) {
+  const w = maskC.width, h = maskC.height, g0 = grow(maskC, r), a = alphaArray(g0); free(g0);
+  for (let i = 0; i < a.length; i++) a[i] = a[i] > 127 ? 255 : 0;
+  smoothShape(a, w, h, round);
+  const c = maskCanvas(a, w, h), f = blurred(c, 1.2); free(c); return f;
+}
+function grow(maskC, r) {
+  const w = maskC.width, h = maskC.height, a = alphaArray(maskC), D = distanceToShape(a, w, h), o = new Uint8Array(w * h);
+  for (let i = 0; i < o.length; i++) o[i] = Math.round(255 * Math.min(1, Math.max(0, r - Math.sqrt(D[i]) + 0.5)));
+  return maskCanvas(o, w, h);
+}
+function handShape(photo, lm) {
+  const key = photo.width + "x" + photo.height + ":" + lm.map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(";");
+  if (shapeCache.key === key) return shapeCache.mask;
+  const w = photo.width, h = photo.height, palm = dist(lm[0], lm[9]), N = w * h;
+  const skel = () => { const m = canvas(w, h), g = m.getContext("2d"); g.fillStyle = g.strokeStyle = "#fff"; return [m, g]; };
+  // 探す範囲（骨格を大きめに太らせた形）と、必ず手に含める芯（骨格を細めにした形）
+  const [rc, rg] = skel(); paintHand(rg, lm, palm, palm * 0.16, palm * ARM); const region = alphaArray(rc); free(rc);
+  const [cc, cg] = skel(); paintHand(cg, lm, palm, -palm * 0.1, palm * ARM); const core = alphaArray(cc); free(cc);
+  const [fc, fg] = skel(); paintHand(fg, lm, palm, 0, palm * ARM); const fallback = alphaArray(fc); free(fc);
+  const px = photo.getContext("2d").getImageData(0, 0, w, h).data;
+  const ycc = (i) => { const r = px[i], g = px[i + 1], b = px[i + 2];
+    return [0.299 * r + 0.587 * g + 0.114 * b, 128 - 0.1687 * r - 0.3313 * g + 0.5 * b, 128 + 0.5 * r - 0.4187 * g - 0.0813 * b]; };
+  // 肌の色の見本：芯の中の点を集める
+  const sam = [];
+  for (let i = 0, step = Math.max(1, Math.floor(N / 40000)); i < N; i += step) if (core[i] > 200) sam.push(ycc(i * 4));
+  const pick = (k) => { const v = sam.map((s) => s[k]).sort((a, b) => a - b); const m = v[v.length >> 1];
+    const mad = v.map((x) => Math.abs(x - m)).sort((a, b) => a - b)[v.length >> 1]; return [m, mad * 1.48 + 1]; };
+  let mask = null;
+  if (sam.length > 50) {
+    const [mY, sY] = pick(0), [mB, sB] = pick(1), [mR, sR] = pick(2);
+    const a = new Uint8Array(N); let cnt = 0, regionCnt = 0, fbCnt = 0;
+    for (let i = 0; i < N; i++) {
+      if (fallback[i] > 127) fbCnt++;
+      if (region[i] < 127) continue; regionCnt++;
+      const [y, cb, cr] = ycc(i * 4);
+      const d = ((cb - mB) / (sB * 3 + 4)) ** 2 + ((cr - mR) / (sR * 3 + 4)) ** 2;
+      if ((d < 1 && Math.abs(y - mY) < sY * 4 + 60) || core[i] > 127) { a[i] = 255; cnt++; }
+    }
+    // 拾いすぎ（背景も肌色に近い）・拾わなさすぎの時は骨格の形に戻す
+    if (cnt > fbCnt * 0.75 && cnt < regionCnt * 0.92) mask = a;
+  }
+  if (!mask) { mask = new Uint8Array(N); for (let i = 0; i < N; i++) mask[i] = fallback[i] > 127 ? 255 : 0; }
+  // 小さな穴やギザギザをならす（閉じる）→ 穴を埋める → 一番大きな塊だけ残す
+  let c = maskCanvas(mask, w, h); const closed = grow(c, palm * 0.04); free(c);
+  const a2 = alphaArray(closed); free(closed);
+  const b2 = blurred(maskCanvas(a2, w, h), palm * 0.04), a3 = alphaArray(b2); free(b2);
+  for (let i = 0; i < N; i++) a3[i] = a3[i] > 200 ? 255 : 0;
+  // 細いトゲ（背景の土などを拾った所）を削る：一度細らせてから戻す
+  { const Din = distanceToShape(a3.map((x) => 255 - x), w, h), ae = new Uint8Array(N), rr = palm * 0.06;
+    for (let i = 0; i < N; i++) ae[i] = Math.sqrt(Din[i]) > rr ? 255 : 0;
+    const back = grow(maskCanvas(ae, w, h), rr), ab = alphaArray(back); free(back);
+    for (let i = 0; i < N; i++) a3[i] = (ab[i] > 127 || core[i] > 127) ? 255 : 0; }
+  keepLargestFilled(a3, w, h);
+  // ギザギザをならして曲線にする：形をなめらかにぼかし、半分の濃さの所で輪郭を引き直す（2回）
+  smoothShape(a3, w, h, palm * 0.09); smoothShape(a3, w, h, palm * 0.06);
+  for (let i = 0; i < N; i++) if (core[i] > 127) a3[i] = 255;    // ならしすぎて指先が欠けないように、芯は残す
+  smoothShape(a3, w, h, palm * 0.03);
+  keepLargestFilled(a3, w, h);
+  const out = maskCanvas(a3, w, h);
+  free(shapeCache.mask); shapeCache = { key, mask: out };
+  return out;
+}
+// 輪郭をなめらかにする：箱ぼかしを3回かけて（ほぼガウスぼかし）、真ん中の濃さで切り直す
+function boxBlur(src, w, h, r) {
+  r = Math.max(1, Math.round(r));
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h), k = 1 / (2 * r + 1);
+  for (let y = 0; y < h; y++) { let acc = 0; const o = y * w;
+    for (let x = -r; x <= r; x++) acc += src[o + Math.min(w - 1, Math.max(0, x))];
+    for (let x = 0; x < w; x++) { tmp[o + x] = acc * k; acc += src[o + Math.min(w - 1, x + r + 1)] - src[o + Math.max(0, x - r)]; } }
+  for (let x = 0; x < w; x++) { let acc = 0;
+    for (let y = -r; y <= r; y++) acc += tmp[Math.min(h - 1, Math.max(0, y)) * w + x];
+    for (let y = 0; y < h; y++) { out[y * w + x] = acc * k; acc += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x]; } }
+  return out;
+}
+function smoothShape(a, w, h, r) {
+  let f = Float32Array.from(a); const rr = r / Math.sqrt(3);
+  for (let i = 0; i < 3; i++) f = boxBlur(f, w, h, rr);
+  for (let i = 0; i < a.length; i++) a[i] = f[i] >= 127.5 ? 255 : 0;
+}
+function keepLargestFilled(a, w, h) {
+  const N = w * h, lab = new Int32Array(N), st = new Int32Array(N); let best = 0, bestN = 0, n = 0;
+  for (let s = 0; s < N; s++) { if (!a[s] || lab[s]) continue; n++; let top = 0, cnt = 0; st[top++] = s; lab[s] = n;
+    while (top) { const p = st[--top], x = p % w; cnt++;
+      if (x > 0 && a[p - 1] && !lab[p - 1]) { lab[p - 1] = n; st[top++] = p - 1; }
+      if (x < w - 1 && a[p + 1] && !lab[p + 1]) { lab[p + 1] = n; st[top++] = p + 1; }
+      if (p >= w && a[p - w] && !lab[p - w]) { lab[p - w] = n; st[top++] = p - w; }
+      if (p < N - w && a[p + w] && !lab[p + w]) { lab[p + w] = n; st[top++] = p + w; } }
+    if (cnt > bestN) { bestN = cnt; best = n; } }
+  const seen = new Uint8Array(N); let top = 0;
+  for (let i = 0; i < N; i++) a[i] = lab[i] === best ? 255 : 0;
+  for (let x = 0; x < w; x++) for (const p of [x, N - w + x]) if (!a[p] && !seen[p]) { seen[p] = 1; st[top++] = p; }
+  for (let y = 0; y < h; y++) for (const p of [y * w, y * w + w - 1]) if (!a[p] && !seen[p]) { seen[p] = 1; st[top++] = p; }
+  while (top) { const p = st[--top], x = p % w;
+    for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w]) if (q >= 0 && q < N && !a[q] && !seen[q]) { seen[q] = 1; st[top++] = q; } }
+  for (let i = 0; i < N; i++) if (!a[i] && !seen[i]) a[i] = 255;   // 外から届かない所＝手の中の穴
+}
+
+// 手（＋実写の余白）を切り抜く。余白も白いふちも、実際の手の輪郭に沿って太らせる
+function cutHand(photo, lm, shape, shapeSrc = photo) {
+  const palm = dist(lm[0], lm[9]);
+  const cut = copyOf(photo), cg = cut.getContext("2d");
+  const mask = growRound(handShape(shapeSrc, lm), palm * EDGE_REAL, palm * 0.12);
+  cg.globalCompositeOperation = "destination-in"; cg.drawImage(mask, 0, 0); free(mask);
   cg.globalCompositeOperation = "source-over";
   return cut;
 }
@@ -346,10 +470,11 @@ function uprightBox(lm, palm, padding) {
   return { rotA, x0, x1, y0, y1 };
 }
 
-function compose(photo, lm, no, shape = false) {
+function compose(photo, lm, no, shape = false, shapeSrc = photo) {
   const pw = photo.width, ph = photo.height, palm = dist(lm[0], lm[9]);
-  const cut = cutHand(photo, lm, shape);
-  const rim = handMask(pw, ph, lm, palm, palm * (MARGIN + BORDER), C.paper);
+  const cut = cutHand(photo, lm, shape, shapeSrc);
+  const rim = growRound(handShape(shapeSrc, lm), palm * (EDGE_REAL + BORDER), palm * 0.14);
+  { const rg = rim.getContext("2d"); rg.globalCompositeOperation = "source-in"; rg.fillStyle = C.paper; rg.fillRect(0, 0, pw, ph); }
 
   const c = canvas(W, H), g = c.getContext("2d");
   drawBackground(g, 0);                     // 背景は赤と青の円が重なる形（全員共通）
@@ -414,8 +539,8 @@ function grain(g) {
 
 // 広報用の素材：手（輪郭の周りまで実写）を、指先が上を向くよう回転して切り出した透明PNG。
 // 公式アカウントの投稿画像は、この素材から別のツールで作る
-function handMaterial(photo, lm, shape = false) {
-  const palm = dist(lm[0], lm[9]), cut = cutHand(photo, lm, shape);
+function handMaterial(photo, lm, shape = false, shapeSrc = photo) {
+  const palm = dist(lm[0], lm[9]), cut = cutHand(photo, lm, shape, shapeSrc);
   const b = uprightBox(lm, palm, palm * (0.24 + MARGIN));
   const k = Math.min(1, 1400 / (b.y1 - b.y0));
   const out = canvas((b.x1 - b.x0) * k, (b.y1 - b.y0) * k), og = out.getContext("2d");
@@ -451,7 +576,7 @@ function flushUpload() {
   uploading = (async () => {
     try {
       const mode = filterMode, story = lastBlob;
-      const src = photoForMode(), mat = handMaterial(src, lastLm, false);
+      const src = photoForMode(), mat = handMaterial(src, lastLm, false, lastPhoto);
       if (src !== lastPhoto) free(src);
       const blob = await new Promise((r) => mat.toBlob(r, "image/png")); free(mat);
       const base = `${pad(myNo)}_${photoId}_${mode}_${Date.now()}`;
