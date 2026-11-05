@@ -1,0 +1,25 @@
+# 手の検出モデルを配布元から取得してリポジトリに同梱する（参加者のブラウザが Google に接続しなくて済むように）
+name: 手の検出モデルを同梱する
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/fetch-model.yml"]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: モデルを取得
+        run: |
+          f=vendor/mediapipe/hand_landmarker.task
+          if [ -f "$f" ]; then echo "同梱済み"; exit 0; fi
+          curl -fsSL -o "$f" https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
+          sha256sum "$f"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add "$f"
+          git commit -m "手の検出モデルを同梱"
+          git push

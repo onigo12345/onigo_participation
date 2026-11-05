@@ -1,11 +1,17 @@
--- Supabase の SQL Editor に貼り付けて実行してください（何度実行しても大丈夫です）。
+-- 鬼ごっこサークル：Supabase の準備
+-- SQL Editor に貼り付けて実行してください。何度実行しても大丈夫です（データは消えません）。
 -- いちばん下の「管理者のメールアドレス」を、あなたのアドレスに書き換えてから実行してください。
 --
--- 集めるデータ（これ以外は集めません）
---   参加者：参加番号／学部／回生（任意）／ニックネーム（本名不可）／知ったきっかけ（任意）／初めて来た日
---   来場  ：日付／来た時刻／帰った時刻／どのQR（設置者）から来たか／何回目か／画像を作ったか／シェアしたか／楽しかった度（任意）
--- 集めないもの：本名・学籍番号・連絡先・位置情報・顔写真
--- 端末の見分けには、スマホの中で作ったランダムな文字列（device_key）だけを使います。
+-- 集めるデータ（これ以外は集めません。詳しくは privacy.html）
+--   参加者：参加番号／学部／回生（任意）／ニックネーム（本名不可）／知ったきっかけ（任意）
+--   来場  ：日付／来た時刻／帰った時刻／どのQR（設置者）から来たか／画像を作ったか／シェアしたか／楽しかった度（任意）
+--   画像  ：手の切り抜き（透明PNG）と、本人が作ったストーリー画像（JPEG）
+-- 集めないもの：本名・学籍番号・連絡先・位置情報・顔写真・端末の情報
+-- 端末の見分けには、スマホのブラウザの中で作ったランダムな文字列を使い、
+-- データベースにはそれを元に戻せない形（SHA-256）に変えてから保存します。管理者にも見えません。
+-- 来場の記録は2年たつと自動で消えます。参加者は帰る時のページから、自分の記録をいつでも消せます。
+
+create extension if not exists pgcrypto with schema extensions;
 
 -- ---------- 参加者 ----------
 create table if not exists participants (
@@ -13,25 +19,26 @@ create table if not exists participants (
   source text,
   created_at timestamptz not null default now()
 );
-alter table participants add column if not exists source     text;
-alter table participants add column if not exists device_key text;
-alter table participants add column if not exists faculty    text;
-alter table participants add column if not exists grade      text;
-alter table participants add column if not exists nickname   text;
-alter table participants add column if not exists heard_from text;
-alter table participants add column if not exists profile_at timestamptz;
+alter table participants add column if not exists source        text;
+alter table participants add column if not exists device_key    text;     -- 端末の目印を SHA-256 にしたもの
+alter table participants add column if not exists faculty       text;
+alter table participants add column if not exists grade         text;
+alter table participants add column if not exists nickname      text;
+alter table participants add column if not exists heard_from    text;
+alter table participants add column if not exists profile_at    timestamptz;
+alter table participants add column if not exists profile_tries smallint not null default 0;   -- 名前の確認を何回したか（総当たり対策）
 create unique index if not exists participants_device_key on participants(device_key);
 
--- ---------- QRの設置者（QRに入れる短い合言葉 → 誰が置いたQRか） ----------
+-- ---------- QRの設置者 ----------
 create table if not exists spots (
   token      text primary key,
-  placer     text not null,          -- 設置者のニックネーム（例：代表）
+  placer     text not null,
   note       text,
   active     boolean not null default true,
   created_at timestamptz not null default now()
 );
 
--- ---------- 来場（1人×1日＝1行。来た時のQRと帰る時のQRで記録） ----------
+-- ---------- 来場（1人×1日＝1行） ----------
 create table if not exists visits (
   id            bigint generated always as identity primary key,
   participant_no bigint not null references participants(id) on delete cascade,
@@ -45,7 +52,7 @@ create table if not exists visits (
 );
 create index if not exists visits_date on visits(visit_date);
 create index if not exists visits_participant on visits(participant_no);
-create unique index if not exists visits_one_per_day on visits(participant_no, visit_date);   -- 1人1日1行
+create unique index if not exists visits_one_per_day on visits(participant_no, visit_date);
 
 -- ---------- 参加者が作った画像の記録 ----------
 create table if not exists submissions (
@@ -60,10 +67,18 @@ create table if not exists submissions (
 alter table submissions add column if not exists look text;
 alter table submissions add column if not exists story_path text;
 
-alter table participants enable row level security;
-alter table spots        enable row level security;
-alter table visits       enable row level security;
-alter table submissions  enable row level security;
+-- ---------- 消してほしいと頼まれた画像（管理ページを開いた時に自動で消す） ----------
+create table if not exists deletion_requests (
+  id bigint generated always as identity primary key,
+  paths text[] not null,
+  requested_at timestamptz not null default now()
+);
+
+alter table participants      enable row level security;
+alter table spots             enable row level security;
+alter table visits            enable row level security;
+alter table submissions       enable row level security;
+alter table deletion_requests enable row level security;
 
 -- ---------- 管理者 ----------
 create table if not exists admins (email text primary key);
@@ -72,79 +87,60 @@ create or replace function public.is_admin() returns boolean
   language sql stable security definer set search_path = public
   as $$ select exists (select 1 from admins where lower(email) = lower(auth.jwt() ->> 'email')) $$;
 
--- ---------- 参加者のスマホから呼ぶ処理（中身を直接は読めない・書けない。この処理だけ使える） ----------
+-- ---------- 小さな道具 ----------
+-- 端末の目印を、元に戻せない形にする
+create or replace function public._hash(t text) returns text language sql immutable
+  as $$ select encode(extensions.digest(t, 'sha256'), 'hex') $$;
+-- 名前の比べ方（全角・半角、大文字・小文字、空白の違いは同じとみなす）
+create or replace function public._norm(t text) returns text language sql immutable
+  as $$ select lower(regexp_replace(normalize(coalesce(t, ''), NFKC), '\s+', '', 'g')) $$;
 create or replace function public._me(p_device text) returns bigint
   language sql stable security definer set search_path = public
-  as $$ select id from participants where device_key = p_device $$;
+  as $$ select id from participants where device_key = public._hash(p_device) $$;
+create or replace function public._today() returns date language sql stable
+  as $$ select (now() at time zone 'Asia/Tokyo')::date $$;
 
+-- これまでに生のまま保存していた目印を、元に戻せない形に置きかえる（1回だけ効く）
+update participants set device_key = public._hash(device_key) where device_key is not null and length(device_key) <> 64;
+
+-- ---------- 参加者のスマホから呼ぶ処理（表は直接読めない・書けない。この処理だけ使える） ----------
 -- 来た時のQR：参加者を登録（初回のみ）し、今日の来場を記録する
+drop function if exists public.join_visit(text, text);
 create or replace function public.join_visit(p_device text, p_spot text default null) returns json
   language plpgsql security definer set search_path = public as $$
-declare pid bigint; prof boolean; n int; today date := (now() at time zone 'Asia/Tokyo')::date; s text := null;
+declare pid bigint; prof boolean; n int; today date := public._today(); s text := null;
 begin
-  if p_device is null or length(p_device) < 24 or length(p_device) > 64 then raise exception 'bad device'; end if;
-  select id, nickname is not null into pid, prof from participants where device_key = p_device;
+  if p_device is null or p_device !~ '^[0-9a-f]{32}$' then raise exception 'bad device'; end if;
+  select id, nickname is not null into pid, prof from participants where device_key = public._hash(p_device);
   if pid is null then
-    insert into participants(device_key, source) values (p_device, 'qr') returning id into pid; prof := false;
+    insert into participants(device_key, source) values (public._hash(p_device), 'qr') returning id into pid; prof := false;
   end if;
   select token into s from spots where token = p_spot and active;
-  if not exists (select 1 from visits where participant_no = pid and visit_date = today) then
-    insert into visits(participant_no, spot, visit_date, arrived_at) values (pid, s, today, now());
-  else
-    update visits set arrived_at = coalesce(arrived_at, now()), spot = coalesce(spot, s)
-      where participant_no = pid and visit_date = today;
-  end if;
+  insert into visits(participant_no, spot, visit_date, arrived_at) values (pid, s, today, now())
+    on conflict (participant_no, visit_date) do update
+      set arrived_at = coalesce(visits.arrived_at, excluded.arrived_at), spot = coalesce(visits.spot, excluded.spot);
   select count(*) into n from visits where participant_no = pid;
+  -- 保存期間：2年より前の来場と、来場の記録がなくなった参加者を消す（ときどき）
+  if random() < 0.05 then
+    delete from visits where visit_date < today - 730;
+    delete from participants p where created_at < now() - interval '730 days'
+      and not exists (select 1 from visits v where v.participant_no = p.id);
+  end if;
   return json_build_object('no', pid, 'has_profile', prof, 'visits', n);
 end $$;
 
--- 画像を作った・シェアした
-create or replace function public.mark_visit(p_device text, p_what text) returns void
-  language plpgsql security definer set search_path = public as $$
-declare pid bigint := public._me(p_device); today date := (now() at time zone 'Asia/Tokyo')::date;
-begin
-  if pid is null then return; end if;
-  if p_what = 'image'  then update visits set made_image = true where participant_no = pid and visit_date = today; end if;
-  if p_what = 'shared' then update visits set shared     = true where participant_no = pid and visit_date = today; end if;
-end $$;
-
--- 帰る時のQR：帰った時刻を記録し、今日の滞在時間を返す（読み直したら時刻を上書き）
-create or replace function public.leave_visit(p_device text, p_spot text default null, p_feeling smallint default null) returns json
-  language plpgsql security definer set search_path = public as $$
-declare pid bigint := public._me(p_device); today date := (now() at time zone 'Asia/Tokyo')::date; s text := null; v visits; n int; nick text;
-begin
-  if pid is null then return json_build_object('known', false); end if;
-  select token into s from spots where token = p_spot and active;
-  select * into v from visits where participant_no = pid and visit_date = today;
-  if v.id is null then
-    insert into visits(participant_no, spot, visit_date, left_at, feeling) values (pid, s, today, now(), p_feeling) returning * into v;
-  else
-    update visits set left_at = now(), feeling = coalesce(p_feeling, feeling), spot = coalesce(spot, s) where id = v.id returning * into v;
-  end if;
-  select count(*) into n from visits where participant_no = pid;
-  select nickname into nick from participants where id = pid;
-  return json_build_object('known', true, 'no', pid, 'visits', n, 'nickname', nick,
-    'minutes', case when v.arrived_at is null then null else round(extract(epoch from (v.left_at - v.arrived_at)) / 60) end);
-end $$;
-
-revoke all on function public._me(text) from public, anon, authenticated;
-grant execute on function public.join_visit(text, text)                    to anon, authenticated;
-grant execute on function public.mark_visit(text, text)                     to anon, authenticated;
-grant execute on function public.leave_visit(text, text, smallint)          to anon, authenticated;
-
--- ---------- 同じ人の見分け：ニックネーム＋学部が同じ人がすでにいたら、新しく登録せず「前にも来た？」と確認する ----------
-create or replace function public._norm(t text) returns text language sql immutable
-  as $$ select lower(regexp_replace(normalize(coalesce(t, ''), NFKC), '\s+', '', 'g')) $$;
-
+-- アンケート：同じ学部・同じニックネームの人がいたら、登録せずに {status:"exists"} を返す
 drop function if exists public.save_profile(text, text, text, text, text);
 create or replace function public.save_profile(p_device text, p_faculty text, p_grade text, p_nickname text, p_heard text) returns json
   language plpgsql security definer set search_path = public as $$
-declare me bigint := public._me(p_device); other bigint;
+declare me bigint := public._me(p_device); other bigint; tries smallint;
 begin
   if me is null then raise exception 'unknown device'; end if;
   if length(coalesce(trim(p_nickname), '')) not between 1 and 20 or length(coalesce(p_faculty, '')) not between 1 and 30 then
     raise exception 'bad profile';
   end if;
+  update participants set profile_tries = profile_tries + 1 where id = me returning profile_tries into tries;
+  if tries > 15 then raise exception 'too many tries'; end if;   -- 名前を総当たりで調べられないように
   select id into other from participants
    where id <> me and faculty = p_faculty and public._norm(nickname) = public._norm(p_nickname) limit 1;
   if other is not null then return json_build_object('status', 'exists'); end if;
@@ -154,44 +150,110 @@ begin
   return json_build_object('status', 'ok', 'no', me);
 end $$;
 
--- 「前にも来た」本人：この端末を、前の自分の記録につなぎ直す（今日の来場も移す）
+-- 「前にも来た」本人：この端末を、前の自分の記録につなぎ直す
+drop function if exists public.relink(text, text, text);
 create or replace function public.relink(p_device text, p_faculty text, p_nickname text) returns json
   language plpgsql security definer set search_path = public as $$
-declare me bigint := public._me(p_device); old bigint; today date := (now() at time zone 'Asia/Tokyo')::date;
+declare me bigint := public._me(p_device); old bigint; tries smallint;
 begin
   if me is null then raise exception 'unknown device'; end if;
+  update participants set profile_tries = profile_tries + 1 where id = me returning profile_tries into tries;
+  if tries > 15 then raise exception 'too many tries'; end if;
   select id into old from participants
    where id <> me and faculty = p_faculty and public._norm(nickname) = public._norm(p_nickname) limit 1;
   if old is null then return json_build_object('status', 'notfound'); end if;
   -- 前の自分に今日の記録がすでにある＝今日は別のスマホで参加済み。なりすましで他人の今日の記録を見られないよう、つなぎ直さない
-  if exists (select 1 from visits where participant_no = old and visit_date = today) then
+  if exists (select 1 from visits where participant_no = old and visit_date = public._today()) then
     return json_build_object('status', 'busy');
   end if;
   update visits set participant_no = old where participant_no = me;
   update submissions set participant_no = old where participant_no = me;
   delete from participants where id = me;
-  update participants set device_key = p_device where id = old;
+  update participants set device_key = public._hash(p_device), profile_tries = 0 where id = old;
   return json_build_object('status', 'ok', 'no', old);
 end $$;
 
-revoke all on function public._norm(text) from public, anon, authenticated;
+-- 画像を作った・シェアした
+drop function if exists public.mark_visit(text, text);
+create or replace function public.mark_visit(p_device text, p_what text) returns void
+  language plpgsql security definer set search_path = public as $$
+declare pid bigint := public._me(p_device);
+begin
+  if pid is null then return; end if;
+  if p_what = 'image'  then update visits set made_image = true where participant_no = pid and visit_date = public._today(); end if;
+  if p_what = 'shared' then update visits set shared     = true where participant_no = pid and visit_date = public._today(); end if;
+end $$;
+
+-- 画像の記録：参加番号は端末から決める（他人の番号で画像を登録できないように）
+drop function if exists public.add_submission(text, text, text, text);
+create or replace function public.add_submission(p_device text, p_image text, p_story text, p_look text) returns void
+  language plpgsql security definer set search_path = public as $$
+declare pid bigint := public._me(p_device);
+begin
+  if pid is null then raise exception 'unknown device'; end if;
+  if p_look not in ('none', 'soft', 'blur') or p_image !~ '^[0-9a-z_]+\.png$' or (p_story is not null and p_story !~ '^[0-9a-z_]+\.jpg$') then
+    raise exception 'bad submission';
+  end if;
+  insert into submissions(participant_no, image_path, story_path, consent, look) values (pid, p_image, p_story, true, p_look);
+end $$;
+
+-- 帰る時のQR：帰った時刻を記録し、今日の滞在時間を返す
+drop function if exists public.leave_visit(text, text, smallint);
+create or replace function public.leave_visit(p_device text, p_spot text default null, p_feeling smallint default null) returns json
+  language plpgsql security definer set search_path = public as $$
+declare pid bigint := public._me(p_device); today date := public._today(); s text := null; v visits; n int; nick text;
+begin
+  if pid is null then return json_build_object('known', false); end if;
+  select token into s from spots where token = p_spot and active;
+  insert into visits(participant_no, spot, visit_date, left_at, feeling) values (pid, s, today, now(), p_feeling)
+    on conflict (participant_no, visit_date) do update
+      set left_at = now(), feeling = coalesce(excluded.feeling, visits.feeling), spot = coalesce(visits.spot, excluded.spot)
+    returning * into v;
+  select count(*) into n from visits where participant_no = pid;
+  select nickname into nick from participants where id = pid;
+  return json_build_object('known', true, 'no', pid, 'visits', n, 'nickname', nick,
+    'minutes', case when v.arrived_at is null then null else round(extract(epoch from (v.left_at - v.arrived_at)) / 60) end);
+end $$;
+
+-- 自分の記録をすべて消す（アンケート・来場・画像）。画像のファイルは、管理ページを開いた時に自動で消える
+drop function if exists public.forget_me(text);
+create or replace function public.forget_me(p_device text) returns json
+  language plpgsql security definer set search_path = public as $$
+declare pid bigint := public._me(p_device); ps text[];
+begin
+  if pid is null then return json_build_object('status', 'none'); end if;
+  select array_agg(p) into ps from (
+    select image_path as p from submissions where participant_no = pid
+    union all select story_path from submissions where participant_no = pid and story_path is not null) x;
+  if ps is not null then insert into deletion_requests(paths) values (ps); end if;
+  delete from submissions where participant_no = pid;
+  delete from participants where id = pid;    -- 来場の記録も一緒に消える
+  return json_build_object('status', 'ok');
+end $$;
+
+revoke all on function public._me(text), public._hash(text), public._norm(text) from public, anon, authenticated;
+grant execute on function public.join_visit(text, text)                     to anon, authenticated;
 grant execute on function public.save_profile(text, text, text, text, text) to anon, authenticated;
-grant execute on function public.relink(text, text, text)                    to anon, authenticated;
+grant execute on function public.relink(text, text, text)                   to anon, authenticated;
+grant execute on function public.mark_visit(text, text)                     to anon, authenticated;
+grant execute on function public.add_submission(text, text, text, text)     to anon, authenticated;
+grant execute on function public.leave_visit(text, text, smallint)          to anon, authenticated;
+grant execute on function public.forget_me(text)                            to anon, authenticated;
 
--- ---------- 表を使える役割（「新しい表を自動で公開」をオフにしたプロジェクトでも動くように、明示する） ----------
+-- ---------- 表を使える役割（必要なものだけ） ----------
 grant usage on schema public to anon, authenticated;
-revoke all on participants, visits, spots, submissions, admins from anon, authenticated;
-grant select                 on participants to authenticated;
-grant select                 on visits       to authenticated;
-grant select, insert, update on spots        to authenticated;
-grant insert                 on submissions  to anon;
-grant select, delete         on submissions  to authenticated;
-grant usage, select on all sequences in schema public to anon, authenticated;
+revoke all on participants, visits, spots, submissions, admins, deletion_requests from anon, authenticated;
+-- 管理者も、端末の目印（device_key）や確認の回数は見られない
+grant select (id, source, faculty, grade, nickname, heard_from, profile_at, created_at) on participants to authenticated;
+grant select                 on visits            to authenticated;
+grant select, insert, update on spots             to authenticated;
+grant select, delete         on submissions       to authenticated;
+grant select, delete         on deletion_requests to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
 
--- ---------- 読み書きのルール ----------
--- 参加者のスマホからは、上の処理を通してしか読み書きできない（表を直接は見られない）
-drop policy if exists "anyone can join"     on participants;
-drop policy if exists "anyone can read ids" on participants;
+-- ---------- 読み書きのルール（管理者だけが読める） ----------
+drop policy if exists "anyone can join"          on participants;
+drop policy if exists "anyone can read ids"      on participants;
 drop policy if exists "admin reads participants" on participants;
 create policy "admin reads participants" on participants for select to authenticated using (public.is_admin());
 
@@ -201,26 +263,29 @@ create policy "admin reads visits" on visits for select to authenticated using (
 drop policy if exists "admin manages spots" on spots;
 create policy "admin manages spots" on spots for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
-drop policy if exists "anyone can submit" on submissions;
-create policy "anyone can submit" on submissions for insert to anon
-  with check (consent = true and look in ('none', 'soft', 'blur', 'shape'));
+drop policy if exists "anyone can submit"         on submissions;
 drop policy if exists "admin reads submissions"   on submissions;
 drop policy if exists "admin deletes submissions" on submissions;
 create policy "admin reads submissions"   on submissions for select to authenticated using (public.is_admin());
 create policy "admin deletes submissions" on submissions for delete to authenticated using (public.is_admin());
 
--- ---------- 画像の保存先（非公開）。PNG・JPEGのみ・1枚5MBまで ----------
+drop policy if exists "admin handles deletion requests" on deletion_requests;
+create policy "admin handles deletion requests" on deletion_requests for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- ---------- 画像の保存先（非公開）。PNG・JPEGのみ・1枚2MBまで ----------
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-  values ('hands', 'hands', false, 5242880, array['image/png', 'image/jpeg'])
-  on conflict (id) do update set public = false, file_size_limit = 5242880, allowed_mime_types = array['image/png', 'image/jpeg'];
+  values ('hands', 'hands', false, 2097152, array['image/png', 'image/jpeg'])
+  on conflict (id) do update set public = false, file_size_limit = 2097152, allowed_mime_types = array['image/png', 'image/jpeg'];
 drop policy if exists "anyone can upload hand" on storage.objects;
 drop policy if exists "admin reads hands"      on storage.objects;
 drop policy if exists "admin deletes hands"    on storage.objects;
-create policy "anyone can upload hand" on storage.objects for insert to anon with check (bucket_id = 'hands');
+-- 参加者はアップロードだけ（上書き・閲覧・削除は不可）。ファイル名の形も決めておく
+create policy "anyone can upload hand" on storage.objects for insert to anon
+  with check (bucket_id = 'hands' and name ~ '^[0-9a-z_]+\.(png|jpg)$');
 create policy "admin reads hands"   on storage.objects for select to authenticated using (bucket_id = 'hands' and public.is_admin());
 create policy "admin deletes hands" on storage.objects for delete to authenticated using (bucket_id = 'hands' and public.is_admin());
 
--- ---------- 最初のQR（代表が設置するもの）。いま配っているQRコードと対応しています ----------
+-- ---------- 最初のQR（代表が設置するもの） ----------
 insert into spots (token, placer, note) values ('fjpc5t6gz9', '代表', '最初のQR') on conflict (token) do nothing;
 
 -- ▼ 管理者のメールアドレス（書き換えてください。複数人なら行を増やす）

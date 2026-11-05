@@ -1,0 +1,11 @@
+{
+  "name": "onigo-members",
+  "productName": "おにごっこ名簿",
+  "version": "1.0.0",
+  "description": "立命館OIC 鬼ごっこサークルのメンバーと開催の記録",
+  "main": "main.js",
+  "private": true,
+  "devDependencies": {
+    "@electron/packager": "^18.3.6"
+  }
+}

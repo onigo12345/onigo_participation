@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#faf8f4">
 <title>またね。｜立命館OIC 鬼ごっこサークル</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;900&display=swap">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -34,6 +32,9 @@ h1{margin:6vh 0 0;font-size:clamp(3rem,18vw,5rem);font-weight:900;color:var(--bl
 .faces button:focus-visible{outline:3px solid var(--red);outline-offset:2px}
 .next{margin:0;font-size:.9rem;line-height:1.7}
 .next a{color:var(--red);font-weight:900}
+.foot{margin:0;font-size:.78rem;display:flex;gap:14px;align-items:center}
+.foot a{color:var(--muted)}
+.foot button{font:inherit;font-size:.78rem;background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;cursor:pointer}
 .msg{background:#fff;border:1.5px solid var(--ink);padding:12px;font-size:.86rem;line-height:1.7}
 </style>
 </head>
@@ -62,10 +63,11 @@ h1{margin:6vh 0 0;font-size:clamp(3rem,18vw,5rem);font-weight:900;color:var(--bl
       <button type="button" data-v="3" aria-pressed="false"><span>🔥</span>最高！</button>
     </div>
     <p class="next">次の鬼ごっこは <a id="ig" href="https://www.instagram.com/onigo12345/" target="_blank" rel="noopener">@onigo12345</a> でお知らせします。</p>
+    <p class="foot"><a href="privacy.html">集めているデータ</a>　<button type="button" id="forget">わたしの記録を消す</button></p>
   </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="vendor/supabase.js"></script>
 <script src="config.js"></script>
 <script src="visit.js"></script>
 <script>
@@ -89,6 +91,18 @@ async function leave(feeling) {
   if (r.minutes == null) $("stayBox").hidden = true;
   $("count").innerHTML = `${r.visits}<small>回目</small>`;
 })();
+// わたしの記録を消す（2回押しで確定）
+let armed = false;
+$("forget").addEventListener("click", async () => {
+  const b = $("forget");
+  if (!armed) { armed = true; b.textContent = "本当に消す（もう一度押す）"; setTimeout(() => { armed = false; b.textContent = "わたしの記録を消す"; }, 4000); return; }
+  b.disabled = true;
+  try {
+    await window.Visit.forget();
+    document.querySelector("main").innerHTML = `<div><div class="eyebrow">RITSUMEIKAN OIC&nbsp; ONIGOKKO CIRCLE</div><h1>消しました。</h1>
+      <p class="lead">アンケート・来場の記録・画像を消しました。また遊びに来てね！</p></div>`;
+  } catch (e) { console.warn(e); b.disabled = false; b.textContent = "消せませんでした。もう一度押してね"; }
+});
 document.querySelector(".faces").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
   document.querySelectorAll(".faces button").forEach((x) => x.setAttribute("aria-pressed", x === b));

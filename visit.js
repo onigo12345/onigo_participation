@@ -58,6 +58,14 @@
       if (sb) return rpc("relink", { p_device: deviceKey(), p_faculty: p.faculty, p_nickname: p.nickname });
       return { status: "notfound" };
     },
+    async addSubmission(image, story, look) {
+      if (sb) return rpc("add_submission", { p_device: deviceKey(), p_image: image, p_story: story, p_look: look });
+    },
+    // 自分の記録をすべて消す（この端末の目印も消す）
+    async forget() {
+      if (sb && ls.get("onigokko_device")) { const r = await rpc("forget_me", { p_device: deviceKey() }); if (r.status !== "ok" && r.status !== "none") throw new Error(r.status); }
+      for (const k of ["onigokko_device", "onigokko_spot", "onigokko_local", "onigokko_no", "onigokko_demo_counter"]) { try { localStorage.removeItem(k); } catch {} }
+    },
     async mark(what) {
       try {
         if (sb) return await rpc("mark_visit", { p_device: deviceKey(), p_what: what });

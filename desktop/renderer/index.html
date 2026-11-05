@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co">
+<title>おにごっこ名簿</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="drag"></div>
+    <div class="brand"><span class="dot r"></span><span class="dot b"></span>おにごっこ名簿</div>
+    <nav id="nav">
+      <button data-view="home" aria-current="page"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>ホーム</button>
+      <button data-view="members"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16 14.6c2.6-.2 4.8 1.4 5.5 4.4"/></svg>メンバー</button>
+      <button data-view="events"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>開催</button>
+      <button data-view="placers"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 20h2M20 14v2"/></svg>設置者</button>
+      <button data-view="growth"><svg viewBox="0 0 24 24"><path d="M3 20h18M5 16l5-5 4 3 6-7"/><path d="M15 7h5v5"/></svg>伸び</button>
+    </nav>
+    <div class="side-foot">
+      <div class="source" id="source"></div>
+      <button class="ghost" id="refresh" title="再読み込み (⌘R)"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></button>
+      <button class="ghost" id="openSettings" title="接続"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    </div>
+  </aside>
+
+  <main id="main">
+    <div class="drag top"></div>
+
+    <!-- ホーム -->
+    <section id="v-home" class="view">
+      <header class="vh"><h1 id="homeTitle">今日も、だれかが鬼。</h1></header>
+      <div class="kpis" id="kpis"></div>
+      <div class="card wide"><div class="card-h"><h2>メンバーの増え方と、開催ごとの人数</h2><div class="legend"><i class="sw ink"></i>メンバー累計<i class="sw red"></i>初参加<i class="sw blue"></i>リピーター</div></div><div id="growthChart" class="chart"></div></div>
+      <div class="grid2">
+        <div class="card"><div class="card-h"><h2>最近の開催</h2></div><div id="recentEvents"></div></div>
+        <div class="card"><div class="card-h"><h2>声をかけたい人</h2></div><div id="nudges"></div></div>
+      </div>
+    </section>
+
+    <!-- メンバー -->
+    <section id="v-members" class="view" hidden>
+      <header class="vh"><h1>メンバー</h1>
+        <div class="tools"><input id="q" type="search" placeholder="ニックネーム・学部で探す"><div class="seg" id="segFilter"></div></div>
+      </header>
+      <div class="split">
+        <div class="table-wrap"><table id="memberTable"></table></div>
+        <aside class="detail" id="memberDetail"><div class="empty-detail">メンバーを選ぶと、ここに来場の記録が出ます</div></aside>
+      </div>
+    </section>
+
+    <!-- 開催 -->
+    <section id="v-events" class="view" hidden>
+      <header class="vh"><h1>開催</h1></header>
+      <div id="eventList" class="events"></div>
+    </section>
+
+    <!-- 設置者 -->
+    <section id="v-placers" class="view" hidden>
+      <header class="vh"><h1>設置者</h1><div class="tools"><button class="primary" id="newSpot">＋ QRをつくる</button></div></header>
+      <div id="placerList" class="placers"></div>
+      <div class="card"><div class="card-h"><h2>QRを任せられそうな常連</h2></div><div id="candidates"></div></div>
+    </section>
+
+    <!-- 伸び -->
+    <section id="v-growth" class="view" hidden>
+      <header class="vh"><h1>伸び</h1></header>
+      <div class="grid2">
+        <div class="card"><div class="card-h"><h2>また来てくれた割合</h2><span class="muted">初めて来た月ごと</span></div><div id="cohort"></div></div>
+        <div class="card"><div class="card-h"><h2>盛り上がる曜日と時間</h2></div><div id="heat"></div></div>
+        <div class="card"><div class="card-h"><h2>学部</h2></div><div id="gFaculty"></div></div>
+        <div class="card"><div class="card-h"><h2>知ったきっかけ</h2></div><div id="gHeard"></div></div>
+        <div class="card"><div class="card-h"><h2>回生</h2></div><div id="gGrade"></div></div>
+        <div class="card"><div class="card-h"><h2>ストーリーの広がり</h2></div><div id="gShare"></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 接続 -->
+<dialog id="settings">
+  <form method="dialog" id="settingsForm">
+    <h2>Supabase に接続</h2>
+    <label>Project URL<input id="sUrl" placeholder="https://xxxx.supabase.co" autocomplete="off"></label>
+    <label>anon public key<input id="sKey" autocomplete="off"></label>
+    <label>管理者のメールアドレス<input id="sEmail" type="email" autocomplete="username"></label>
+    <label>パスワード<input id="sPass" type="password" autocomplete="current-password"></label>
+    <p class="err" id="sErr" hidden></p>
+    <div class="row">
+      <button type="button" class="ghost" id="useDemo">デモデータで見る</button>
+      <span class="sp"></span>
+      <button type="button" class="ghost" id="sClose">閉じる</button>
+      <button type="submit" class="primary" id="sGo">接続</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- QRをつくる -->
+<dialog id="spotDlg">
+  <form method="dialog" id="spotForm">
+    <h2>QRをつくる</h2>
+    <label>設置する人<input id="spName" maxlength="20" required placeholder="ニックネーム"></label>
+    <label>メモ<input id="spNote" maxlength="40" placeholder="任意"></label>
+    <div class="row"><span class="sp"></span><button type="button" class="ghost" id="spCancel">やめる</button><button type="submit" class="primary">つくる</button></div>
+  </form>
+</dialog>
+<dialog id="qrDlg"><div class="qr-pair" id="qrPair"></div><div class="row"><span class="sp"></span><button class="primary" id="qrClose">閉じる</button></div></dialog>
+
+<div class="toast" id="toast" hidden></div>
+<script src="vendor/supabase.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="demo.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

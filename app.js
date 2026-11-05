@@ -1,6 +1,6 @@
 // 立命館OIC 鬼ごっこサークル「つかまえた。」参加者アプリ
 // 手の検出ライブラリはあとから読み込む（読み込みに失敗しても、画面やカメラは動くように）
-const VISION = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+const VISION = "./vendor/mediapipe/vision_bundle.mjs";   // 手の検出（Google MediaPipe・Apache 2.0）。同梱して外部には接続しない
 let vision = null;
 
 const CFG = window.APP_CONFIG || {};
@@ -102,8 +102,11 @@ $("sameNo").addEventListener("click", () => {
 $("surveySkip").addEventListener("click", startCamera);
 
 /* ---------- 手の検出モデル（裏で先に読み込む。失敗したら次の撮影でもう一度） ---------- */
-const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
-const MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+const WASM = new URL("vendor/mediapipe/wasm", location.href).href;
+// 手の検出モデル：同梱したものを使う。まだ同梱されていない時だけ Google の配布元から読む（写真は送らない）
+const MODEL_LOCAL = new URL("vendor/mediapipe/hand_landmarker.task", location.href).href;
+const MODEL_REMOTE = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+let MODEL = MODEL_LOCAL;
 let modelPromise = null, fileset = null;
 const createLandmarker = (delegate) => vision.HandLandmarker.createFromOptions(fileset, {
   baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: "IMAGE", numHands: 2, minHandDetectionConfidence: 0.4,
@@ -111,6 +114,7 @@ const createLandmarker = (delegate) => vision.HandLandmarker.createFromOptions(f
 function loadModel() {
   if (!modelPromise) modelPromise = (async () => {
     vision = vision || await import(VISION);
+    try { const r = await fetch(MODEL_LOCAL, { method: "HEAD" }); if (!r.ok) MODEL = MODEL_REMOTE; } catch { MODEL = MODEL_REMOTE; }
     fileset = fileset || await vision.FilesetResolver.forVisionTasks(WASM);
     try { return await createLandmarker("GPU"); } catch { return await createLandmarker("CPU"); }
   })().catch((e) => { modelPromise = null; throw e; });
@@ -578,7 +582,7 @@ function grain(g) {
 function handMaterial(photo, lm, shape = false, shapeSrc = photo) {
   const palm = dist(lm[0], lm[9]), cut = cutHand(photo, lm, shape, shapeSrc);
   const b = uprightBox(lm, palm, palm * (0.24 + MARGIN));
-  const k = Math.min(1, 1400 / (b.y1 - b.y0));
+  const k = Math.min(1, 1000 / (b.y1 - b.y0));   // 指紋が読み取れるほどの解像度にしない
   const out = canvas((b.x1 - b.x0) * k, (b.y1 - b.y0) * k), og = out.getContext("2d");
   og.scale(k, k); og.translate(-b.x0, -b.y0); og.rotate(b.rotA); og.drawImage(cut, 0, 0);
   free(cut); return out;
@@ -623,8 +627,7 @@ function flushUpload() {
       let storyPath = null;
       if (story) { const up2 = await bucket.upload(`${base}_story.jpg`, story, { contentType: "image/jpeg" });
         if (!up2.error) storyPath = `${base}_story.jpg`; else console.warn("story upload failed", up2.error); }
-      const ins = await sb.from("submissions").insert({ participant_no: myNo, image_path: `${base}.png`, story_path: storyPath, consent: true, look: mode });
-      if (ins.error) throw ins.error;
+      await window.Visit.addSubmission(`${base}.png`, storyPath, mode);   // 参加番号はサーバー側で端末から決める
     } catch (e) { console.warn("upload failed", e); uploadedKey = ""; }
     finally { uploading = null; if (`${photoId}:${filterMode}` !== uploadedKey) markChanged(); }
   })();
