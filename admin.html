@@ -308,7 +308,9 @@ $("igCheck").addEventListener("click",async()=>{
 });
 async function loadSettings(){
   const {data,error}=await sb.from("settings").select("auto_story,story_daily_cap").eq("id",1).maybeSingle();
-  if(error||!data){ $("igbox").hidden=true; return; }
+  if(error||!data){ $("igbox").hidden=false; $("autoStory").disabled=true;
+    $("igState").textContent="設定を読み込めませんでした："+(error?`${error.code||""} ${error.message}`:"設定の行がありません（supabase.sql を実行してください）"); return; }
+  $("autoStory").disabled=false;
   $("igbox").hidden=false; $("autoStory").checked=data.auto_story; $("capN").textContent=data.story_daily_cap;
 }
 async function blobOf(path){ const {data,error}=await sb.storage.from(BUCKET).download(path); if(error) throw error; return data; }
