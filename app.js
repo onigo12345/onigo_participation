@@ -411,7 +411,7 @@ function evenBrightness(c, lm) {
   for (let i = 0; i < p.length; i += 4) { p[i] = lut[p[i]]; p[i + 1] = lut[p[i + 1]]; p[i + 2] = lut[p[i + 2]]; }
   g.putImageData(all, 0, 0);
 }
-const BRIGHT_TARGET = 0.6;   // 手のひらの明るさの目標（0〜1）
+const BRIGHT_TARGET = 0.63;   // 手のひらの明るさの目標（0〜1）
 
 function cropToHand(photo, lm) {
   const palm = dist(lm[0], lm[9]), pts = [...lm, armEndOf(lm, palm * ARM)], p = palm * 0.9;
