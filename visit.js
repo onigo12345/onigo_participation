@@ -33,6 +33,9 @@
     put(v) { ls.set("onigokko_local", JSON.stringify(v)); },
   };
 
+  // 端末の記録を、ブラウザにできるだけ消されないよう頼む（対応している端末だけ）
+  try { navigator.storage?.persist?.(); } catch {}
+
   window.Visit = {
     online: !!sb,
     // 来た時：参加番号・何回目か・アンケート済みかを返す
@@ -45,9 +48,15 @@
       local.put(v);
       return { no: v.no, has_profile: !!v.profile, visits: Object.keys(v.days).length };
     },
+    // アンケート：同じ学部・同じニックネームの人がいたら {status:"exists"} を返す
     async saveProfile(p) {
       if (sb) return rpc("save_profile", { p_device: deviceKey(), p_faculty: p.faculty, p_grade: p.grade || "", p_nickname: p.nickname, p_heard: p.heard || "" });
-      const v = local.get(); v.profile = p; local.put(v);
+      const v = local.get(); v.profile = p; local.put(v); return { status: "ok", no: v.no };
+    },
+    // 「前にも来た」本人：この端末を前の記録につなぎ直す
+    async relink(p) {
+      if (sb) return rpc("relink", { p_device: deviceKey(), p_faculty: p.faculty, p_nickname: p.nickname });
+      return { status: "notfound" };
     },
     async mark(what) {
       try {

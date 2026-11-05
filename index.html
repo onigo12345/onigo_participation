@@ -162,7 +162,7 @@ label.btn{display:block;cursor:pointer}
     </label>
     <label>ニックネーム <span class="req">必須</span>
       <input id="nickname" maxlength="20" autocomplete="off" placeholder="例：たっくん（本名はNG）">
-      <small>本名は入れないでね。サークルの中で呼ばれたい名前でOK</small>
+      <small>本名は入れないでね。次に来た時も同じ名前で</small>
     </label>
     <div class="row2">
       <label>回生 <span class="opt">任意</span>
@@ -237,6 +237,16 @@ label.btn{display:block;cursor:pointer}
   </div>
 </section>
 
+<!-- 同じ名前の人がいた時の確認 -->
+<div class="modal" id="same" hidden role="dialog" aria-modal="true" aria-labelledby="sameTitle">
+  <div class="sheet">
+    <h3 id="sameTitle"><span id="sameName"></span>、<br>前にも来てくれた？</h3>
+    <div class="row">
+      <button class="btn ghost" id="sameNo" type="button">ちがう人</button>
+      <button class="btn blue" id="sameYes" type="button">そう、わたし！</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>

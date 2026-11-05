@@ -98,18 +98,6 @@ begin
   return json_build_object('no', pid, 'has_profile', prof, 'visits', n);
 end $$;
 
--- アンケート（初回だけ）
-create or replace function public.save_profile(p_device text, p_faculty text, p_grade text, p_nickname text, p_heard text) returns void
-  language plpgsql security definer set search_path = public as $$
-begin
-  if length(coalesce(p_nickname, '')) not between 1 and 20 or length(coalesce(p_faculty, '')) not between 1 and 30 then
-    raise exception 'bad profile';
-  end if;
-  update participants set faculty = p_faculty, grade = nullif(left(p_grade, 10), ''), nickname = p_nickname,
-         heard_from = nullif(left(p_heard, 20), ''), profile_at = now()
-   where device_key = p_device;
-end $$;
-
 -- 画像を作った・シェアした
 create or replace function public.mark_visit(p_device text, p_what text) returns void
   language plpgsql security definer set search_path = public as $$
@@ -141,9 +129,55 @@ end $$;
 
 revoke all on function public._me(text) from public, anon, authenticated;
 grant execute on function public.join_visit(text, text)                    to anon, authenticated;
-grant execute on function public.save_profile(text, text, text, text, text) to anon, authenticated;
 grant execute on function public.mark_visit(text, text)                     to anon, authenticated;
 grant execute on function public.leave_visit(text, text, smallint)          to anon, authenticated;
+
+-- ---------- 同じ人の見分け：ニックネーム＋学部が同じ人がすでにいたら、新しく登録せず「前にも来た？」と確認する ----------
+create or replace function public._norm(t text) returns text language sql immutable
+  as $$ select lower(regexp_replace(normalize(coalesce(t, ''), NFKC), '\s+', '', 'g')) $$;
+
+drop function if exists public.save_profile(text, text, text, text, text);
+create or replace function public.save_profile(p_device text, p_faculty text, p_grade text, p_nickname text, p_heard text) returns json
+  language plpgsql security definer set search_path = public as $$
+declare me bigint := public._me(p_device); other bigint;
+begin
+  if me is null then raise exception 'unknown device'; end if;
+  if length(coalesce(trim(p_nickname), '')) not between 1 and 20 or length(coalesce(p_faculty, '')) not between 1 and 30 then
+    raise exception 'bad profile';
+  end if;
+  select id into other from participants
+   where id <> me and faculty = p_faculty and public._norm(nickname) = public._norm(p_nickname) limit 1;
+  if other is not null then return json_build_object('status', 'exists'); end if;
+  update participants set faculty = p_faculty, grade = nullif(left(p_grade, 10), ''), nickname = trim(p_nickname),
+         heard_from = nullif(left(p_heard, 20), ''), profile_at = now()
+   where id = me;
+  return json_build_object('status', 'ok', 'no', me);
+end $$;
+
+-- 「前にも来た」本人：この端末を、前の自分の記録につなぎ直す（今日の来場も移す）
+create or replace function public.relink(p_device text, p_faculty text, p_nickname text) returns json
+  language plpgsql security definer set search_path = public as $$
+declare me bigint := public._me(p_device); old bigint; n int; today date := (now() at time zone 'Asia/Tokyo')::date;
+begin
+  if me is null then raise exception 'unknown device'; end if;
+  select id into old from participants
+   where id <> me and faculty = p_faculty and public._norm(nickname) = public._norm(p_nickname) limit 1;
+  if old is null then return json_build_object('status', 'notfound'); end if;
+  -- 今日の来場：前の自分にまだ今日の記録がなければ移す。あれば新しい方を消す
+  if exists (select 1 from visits where participant_no = old and visit_date = today) then
+    delete from visits where participant_no = me and visit_date = today;
+  end if;
+  update visits set participant_no = old where participant_no = me;
+  update submissions set participant_no = old where participant_no = me;
+  delete from participants where id = me;
+  update participants set device_key = p_device where id = old;
+  select count(*) into n from visits where participant_no = old;
+  return json_build_object('status', 'ok', 'no', old, 'visits', n);
+end $$;
+
+revoke all on function public._norm(text) from public, anon, authenticated;
+grant execute on function public.save_profile(text, text, text, text, text) to anon, authenticated;
+grant execute on function public.relink(text, text, text)                    to anon, authenticated;
 
 -- ---------- 表を使える役割（「新しい表を自動で公開」をオフにしたプロジェクトでも動くように、明示する） ----------
 grant usage on schema public to anon, authenticated;

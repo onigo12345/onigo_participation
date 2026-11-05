@@ -74,10 +74,29 @@ $("survey").addEventListener("submit", async (e) => {
   if (!nick) { toast("ニックネームを入れてね"); return; }
   const btn = $("surveyGo"); btn.disabled = true;
   try {
-    await window.Visit.saveProfile({ faculty: $("faculty").value, grade: $("grade").value, nickname: nick.slice(0, 20), heard: $("heard").value });
+    const r = await window.Visit.saveProfile({ faculty: $("faculty").value, grade: $("grade").value, nickname: nick.slice(0, 20), heard: $("heard").value });
+    if (r && r.status === "exists") {   // 同じ学部・同じニックネームの人がいる → 本人か確認
+      $("sameName").textContent = `${nick}さん（${$("faculty").value}）`;
+      $("same").hidden = false; return;
+    }
     hasProfile = true; startCamera();
   } catch (err) { console.warn(err); toast("送れませんでした。電波の良い場所でもう一度押してね。", 3500); }
   finally { btn.disabled = false; }
+});
+// 「前にも来た？」の確認
+$("sameYes").addEventListener("click", async () => {
+  $("sameYes").disabled = true;
+  try {
+    const r = await window.Visit.relink({ faculty: $("faculty").value, nickname: $("nickname").value.trim() });
+    if (r.status !== "ok") throw new Error(r.status);
+    myNo = r.no; $("countNum").textContent = r.no; hasProfile = true; $("same").hidden = true;
+    toast(`おかえり！今日で${r.visits}回目の参加です`, 3200); startCamera();
+  } catch (err) { console.warn(err); toast("つなげませんでした。電波の良い場所でもう一度押してね。", 3500); }
+  finally { $("sameYes").disabled = false; }
+});
+$("sameNo").addEventListener("click", () => {
+  $("same").hidden = true; $("nickname").focus(); $("nickname").select();
+  toast("同じ名前の人がいるので、少し変えてね（例：たっくん2）", 4000);
 });
 $("surveySkip").addEventListener("click", startCamera);
 
