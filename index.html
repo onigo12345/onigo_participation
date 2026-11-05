@@ -83,13 +83,18 @@ label.btn{display:block;cursor:pointer}
 .req{font-size:.68rem;background:var(--red);color:#fff;padding:1px 6px;margin-left:4px}
 .opt{font-size:.68rem;border:1px solid var(--muted);color:var(--muted);padding:0 5px;margin-left:4px}
 .privacy{font-size:.74rem;color:var(--muted);line-height:1.65;margin:0}
-#s-done{justify-content:space-between;overflow:hidden}
-#s-done .art{position:fixed;inset:auto -20vw -18vw auto;width:95vw;height:95vw;pointer-events:none}
+#s-done{overflow:hidden}
+/* 丸の模様は、文字の下の空いている場所にだけ置く（文字に被らない） */
+.done-art{flex:1;min-height:0;position:relative;pointer-events:none}
+.done-art svg{position:absolute;right:-20vw;bottom:-18vw;height:min(95vw,calc(100% + 18vw));width:auto;aspect-ratio:1}
+.done-foot{position:absolute;left:max(20px,env(safe-area-inset-left));right:max(20px,env(safe-area-inset-right));bottom:max(20px,env(safe-area-inset-bottom))}
+#doneB h1{color:var(--blue)}
+#doneB .done-no{color:var(--red)}
 .done-body{position:relative;display:grid;gap:14px;margin-top:8vh}
 .done-body h1{margin:0;font-size:clamp(2.6rem,14vw,4.2rem);font-weight:900;line-height:1.15;color:var(--red)}
 .done-no{margin:0;font-weight:900;font-size:1.15rem;color:var(--blue)}
 .done-no span{font-size:2.2em;font-variant-numeric:tabular-nums}
-.done-foot{position:relative;margin:0;background:rgba(255,255,255,.92);border:1.5px solid var(--ink);padding:12px 14px;font-size:.9rem;font-weight:700}
+.done-foot{margin:0;background:rgba(255,255,255,.92);border:1.5px solid var(--ink);padding:12px 14px;font-size:.9rem;font-weight:700}
 .done-foot b{color:var(--blue)}
 @media (prefers-reduced-motion:no-preference){.done-body h1{animation:pop .5s cubic-bezier(.2,1.4,.4,1) both}}
 @keyframes pop{from{transform:scale(.85);opacity:0}to{transform:none;opacity:1}}
@@ -245,15 +250,21 @@ label.btn{display:block;cursor:pointer}
 
 <!-- 5. 参加完了 -->
 <section id="s-done" class="screen" hidden>
-  <svg class="art" viewBox="0 0 400 400" aria-hidden="true">
-    <defs><clipPath id="cd"><circle cx="150" cy="200" r="140"/></clipPath></defs>
-    <circle cx="150" cy="200" r="140" fill="#e82c34"/><circle cx="270" cy="200" r="140" fill="#1c48c4"/>
-    <circle cx="270" cy="200" r="140" fill="#9a26d9" clip-path="url(#cd)"/>
-  </svg>
   <div class="eyebrow">RITSUMEIKAN OIC&nbsp; ONIGOKKO CIRCLE</div>
-  <div class="done-body">
+  <div class="done-body" id="doneA">
     <p class="done-no"><span id="doneNo">1</span>人目のおともだち</p>
     <h1>それでは<br>楽しんで<br>きてね！</h1>
+  </div>
+  <div class="done-body" id="doneB" hidden>
+    <p class="done-no">さいしょに</p>
+    <h1>近くの人と<br>一緒に鬼を<br>決めてね！</h1>
+  </div>
+  <div class="done-art">
+    <svg viewBox="0 0 400 400" aria-hidden="true">
+      <defs><clipPath id="cd"><circle cx="150" cy="200" r="140"/></clipPath></defs>
+      <circle cx="150" cy="200" r="140" fill="#e82c34"/><circle cx="270" cy="200" r="140" fill="#1c48c4"/>
+      <circle cx="270" cy="200" r="140" fill="#9a26d9" clip-path="url(#cd)"/>
+    </svg>
   </div>
   <p class="done-foot">帰る時は、<b>青いQR</b>をもう一度読んでね</p>
 </section>
@@ -289,8 +300,8 @@ label.btn{display:block;cursor:pointer}
 <div class="toast" id="toast" hidden></div>
 
 <script src="vendor/supabase.js"></script>
-<script src="config.js?v=20261105b"></script>
-<script src="visit.js?v=20261105b"></script>
-<script type="module" src="app.js?v=20261105b"></script>
+<script src="config.js?v=20261105c"></script>
+<script src="visit.js?v=20261105c"></script>
+<script type="module" src="app.js?v=20261105c"></script>
 </body>
 </html>

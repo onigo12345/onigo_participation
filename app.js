@@ -8,7 +8,7 @@ const W = 1080, H = 1920;   // Instagramストーリー（9:16）
 const C = { red: "#e82c34", blue: "#1c48c4", purple: "#9a26d9", paper: "#faf8f4", ink: "#19161e" };
 const $ = (id) => document.getElementById(id);
 // 古いページ（ブラウザに残ったもの）と新しいプログラムが混ざった時は、一度だけ新しく読み直す
-if (!$("ruleNext") || !$("chooseSkip")) {
+if (!$("ruleNext") || !$("chooseSkip") || !$("doneB")) {
   let tried = false; try { tried = sessionStorage.getItem("onigokko_reload") === location.search; } catch {}
   if (!tried) {
     try { sessionStorage.setItem("onigokko_reload", location.search); } catch {}
@@ -130,7 +130,16 @@ $("ruleNext").addEventListener("click", () => {
 });
 $("chooseShoot").addEventListener("click", startCamera);
 $("chooseSkip").addEventListener("click", finishWithoutPhoto);
-function finishWithoutPhoto() { $("doneNo").textContent = myNo || "?"; show("s-done"); }
+// 参加完了：「それでは楽しんできてね！」→ 少しして「近くの人と一緒に鬼を決めてね！」に切り替わる（タップでもすぐ切り替わる）
+function showDone() {
+  $("doneNo").textContent = myNo || "?";
+  $("doneA").hidden = false; $("doneB").hidden = true;
+  show("s-done");
+  clearTimeout(showDone.t); showDone.t = setTimeout(toOni, 3500);
+}
+function toOni() { clearTimeout(showDone.t); $("doneA").hidden = true; $("doneB").hidden = false; }
+$("s-done").addEventListener("click", () => { if ($("doneB").hidden) toOni(); });
+function finishWithoutPhoto() { showDone(); }
 
 /* ---------- 手の検出モデル（裏で先に読み込む。失敗したら次の撮影でもう一度） ---------- */
 const WASM = new URL("vendor/mediapipe/wasm", location.href).href;
@@ -177,7 +186,7 @@ $("toCamera").addEventListener("click", goNext);
 $("back").addEventListener("click", () => { stopCamera(); show("s-choose"); });
 $("flip").addEventListener("click", () => { facing = facing === "environment" ? "user" : "environment"; startCamera(); });
 $("retake").addEventListener("click", () => { flushUpload(); startCamera(); });
-$("finish").addEventListener("click", () => { flushUpload(); $("doneNo").textContent = myNo || "?"; show("s-done"); });
+$("finish").addEventListener("click", () => { flushUpload(); showDone(); });
 
 async function startCamera() {
   show("s-camera"); stopCamera(); $("camMsg").hidden = true; $("shutter").disabled = false;
