@@ -85,6 +85,16 @@ label.btn{display:block;cursor:pointer}
 .req{font-size:.68rem;background:var(--red);color:#fff;padding:1px 6px;margin-left:4px}
 .opt{font-size:.68rem;border:1px solid var(--muted);color:var(--muted);padding:0 5px;margin-left:4px}
 .privacy{font-size:.74rem;color:var(--muted);line-height:1.65;margin:0}
+#s-done{justify-content:space-between;overflow:hidden}
+#s-done .art{position:fixed;inset:auto -20vw -18vw auto;width:95vw;height:95vw;pointer-events:none}
+.done-body{position:relative;display:grid;gap:14px;margin-top:8vh}
+.done-body h1{margin:0;font-size:clamp(2.6rem,14vw,4.2rem);font-weight:900;line-height:1.15;color:var(--red)}
+.done-no{margin:0;font-weight:900;font-size:1.15rem;color:var(--blue)}
+.done-no span{font-size:2.2em;font-variant-numeric:tabular-nums}
+.done-foot{position:relative;margin:0;background:rgba(255,255,255,.92);border:1.5px solid var(--ink);padding:12px 14px;font-size:.9rem;font-weight:700}
+.done-foot b{color:var(--blue)}
+@media (prefers-reduced-motion:no-preference){.done-body h1{animation:pop .5s cubic-bezier(.2,1.4,.4,1) both}}
+@keyframes pop{from{transform:scale(.85);opacity:0}to{transform:none;opacity:1}}
 .note{font-size:.8rem;color:var(--muted);text-align:center;line-height:1.6;margin:0}
 
 /* 同意ポップアップ */
@@ -194,6 +204,21 @@ label.btn{display:block;cursor:pointer}
   <div style="font-weight:900;font-size:1.1rem" id="loadingText">画像をつくっています…</div>
 </section>
 
+<!-- 5. 参加完了 -->
+<section id="s-done" class="screen" hidden>
+  <svg class="art" viewBox="0 0 400 400" aria-hidden="true">
+    <defs><clipPath id="cd"><circle cx="150" cy="200" r="140"/></clipPath></defs>
+    <circle cx="150" cy="200" r="140" fill="#e82c34"/><circle cx="270" cy="200" r="140" fill="#1c48c4"/>
+    <circle cx="270" cy="200" r="140" fill="#9a26d9" clip-path="url(#cd)"/>
+  </svg>
+  <div class="eyebrow">RITSUMEIKAN OIC&nbsp; ONIGOKKO CIRCLE</div>
+  <div class="done-body">
+    <p class="done-no"><span id="doneNo">1</span>人目のおともだち</p>
+    <h1>それでは<br>楽しんで<br>きてね！</h1>
+  </div>
+  <p class="done-foot">帰る時は、<b>青いQR</b>をもう一度読んでね</p>
+</section>
+
 <!-- 4. 完成 -->
 <section id="s-result" class="screen" hidden>
   <h2>できあがり！</h2>
@@ -208,6 +233,7 @@ label.btn{display:block;cursor:pointer}
     <a class="btn ghost" id="save" download="onigokko.jpg">画像を保存する</a>
     <button class="btn ghost" id="retake" type="button">撮りなおす</button>
     <p class="note" id="saveNote">保存できない時は、画像を長押しして保存してください。</p>
+    <button class="btn blue" id="finish" type="button">参加する！</button>
   </div>
 </section>
 

@@ -122,6 +122,7 @@ $("toCamera").addEventListener("click", goNext);
 $("back").addEventListener("click", () => { stopCamera(); show("s-welcome"); });
 $("flip").addEventListener("click", () => { facing = facing === "environment" ? "user" : "environment"; startCamera(); });
 $("retake").addEventListener("click", () => { flushUpload(); startCamera(); });
+$("finish").addEventListener("click", () => { flushUpload(); $("doneNo").textContent = myNo || "?"; show("s-done"); });
 
 async function startCamera() {
   show("s-camera"); stopCamera(); $("camMsg").hidden = true; $("shutter").disabled = false;
