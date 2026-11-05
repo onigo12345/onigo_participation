@@ -2,6 +2,8 @@
 
 立命館OIC 鬼ごっこサークル（Instagram [@onigo12345](https://www.instagram.com/onigo12345/)）が、公園に置いたQRコードから開くWebページです。アプリのインストールは不要です。
 
+※このサークルは、立命館大学の公認団体ではなく、学生有志によるサークルです。
+
 - 参加者ページ：https://onigo12345.github.io/onigo_participation/
 - 集めているデータ（参加者向けの説明）：https://onigo12345.github.io/onigo_participation/privacy.html
 
