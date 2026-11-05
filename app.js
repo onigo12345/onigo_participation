@@ -388,6 +388,7 @@ function armEndOf(lm, armLen) {
 // 手の明るさをそろえる：手のひらの真ん中あたりの明るさ（中央値）を測り、ガンマ補正で目標の明るさにする
 // （暗い写真は明るく、明るすぎる写真は暗く。白とびしにくい）
 const BRIGHT_TARGET = 0.63;   // 手のひらの明るさの目標であり、上限（0〜1）。これより明るくはしない
+const BRIGHT_FLOOR = 0.53;    // とても暗い写真でも、ここまでは明るくする（下限）
 function palmBrightness(c, lm) {
   const g = c.getContext("2d", { willReadFrequently: true });
   const ids = [0, 5, 9, 13, 17];
@@ -417,7 +418,11 @@ function applyGamma(c, gamma) {
 // 撮った写真：目標の明るさにそろえる
 function evenBrightness(c, lm) {
   const m = palmBrightness(c, lm); if (m == null) return;
-  applyGamma(c, Math.min(3, Math.max(0.4, Math.log(BRIGHT_TARGET) / Math.log(m))));
+  // 暗い写真は、ざらつきが目立たない範囲（ガンマ0.4まで）で目標に近づける
+  let gamma = Math.max(0.4, Math.log(BRIGHT_TARGET) / Math.log(m));
+  // それでも下限（53%）に届かないとても暗い写真は、下限までは上げる
+  if (Math.pow(m, gamma) < BRIGHT_FLOOR) gamma = Math.max(0.25, Math.log(BRIGHT_FLOOR) / Math.log(m));
+  applyGamma(c, Math.min(3, gamma));
 }
 // ふんわり・強くぼかすの後：上限より明るくなっていたら、上限まで戻す（暗くはしない）
 function capBrightness(c, lm) {
