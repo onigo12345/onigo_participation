@@ -113,7 +113,7 @@ td.n,th.n{text-align:right}
       <h2 style="margin:0">Instagram への投稿</h2>
       <label class="toggle"><input type="checkbox" id="autoStory"> 参加者が「載せる」を選んだ画像を、ストーリーに自動で投稿する</label>
       <div class="tools"><button class="btn ghost" id="igCheck" type="button">Instagramとの接続を確認</button><span class="hint" id="igState"></span></div>
-      <p class="hint">自動で投稿するのは、参加者が「参加する！」の時にチェックを付けたままにした画像だけです（1人1日1回、24時間に最大<span id="capN">30</span>件）。止めている間に参加した人の画像は、各画像の「ストーリーに投稿」で後から出せます。フィードへの投稿は、本人が「投稿にも使ってよい」を選んだ画像だけ、各画像の「フィードに投稿」から行えます。</p>
+      <p class="hint">自動で投稿するのは、参加者が「参加する！」の時にチェックを付けたままにした画像だけです（1人1日1回、24時間に最大<span id="capN">30</span>件）。止めている間に参加した人の画像は、各画像の「ストーリーに投稿」で後から出せます。フィードの投稿は、本人が「投稿にも使ってよい」を選んだ手の素材を公式投稿メーカーに入れて作ります。</p>
     </div>
     <div class="filter" id="filter" role="group" aria-label="見え方で絞り込む">
       <button type="button" data-v="all" aria-pressed="true">すべて</button>
@@ -256,8 +256,7 @@ function render(){
         catch(e){ say("ストーリーに投稿できませんでした（"+e.message+"）",true); }
         load(); });
       acts.append(b); }
-    if(r.story_path&&r.feed_ok&&!r.feed_posted_at){
-      acts.append(btn("フィードに投稿","ghost",()=>openFeed(card,r))); }
+    // フィードは公式投稿メーカー（3枚1列で糸の柄がつながる）で作って投稿する。ここからは直接投稿しない
     if(r.feed_ok) acts.append(btn("素材を保存","ghost",()=>download(r.image_path,`${pad(r.participant_no)}_${r.look}.png`)));
     if(r.story_path) acts.append(btn("ストーリーを保存","ghost",()=>download(r.story_path,`${pad(r.participant_no)}_story.jpg`)));
     const del=btn("掲載をやめる","danger",async()=>{
