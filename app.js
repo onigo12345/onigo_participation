@@ -134,18 +134,21 @@ $("chooseSkip").addEventListener("click", finishWithoutPhoto);
 function showDone() {
   $("doneNo").textContent = myNo || "?";
   $("doneA").hidden = false; $("doneB").hidden = true;
-  $("doneA").classList.remove("fade"); $("doneB").classList.remove("fade");
+  $("doneB").classList.remove("fade");
+  $("doneA").classList.add("fade");   // 「楽しんできてね！」もぼんやり浮かんでくる
   show("s-done");
+  requestAnimationFrame(() => requestAnimationFrame(() => $("doneA").classList.remove("fade")));
   clearTimeout(showDone.t); showDone.t = setTimeout(toOni, 4000);
 }
 // 「楽しんできてね！」がぼんやり消えて、「近くの人と一緒に鬼やルールを決めてね！」がぼんやり現れる
-const FADE_MS = 900;
+const FADE_MS = 1200;
 function toOni() {
   clearTimeout(showDone.t);
-  if (!$("doneB").hidden || $("doneA").classList.contains("fade")) return;
+  if (!$("doneB").hidden || $("doneA").dataset.leaving) return;
+  $("doneA").dataset.leaving = "1";
   $("doneA").classList.add("fade");
   setTimeout(() => {
-    $("doneA").hidden = true;
+    $("doneA").hidden = true; delete $("doneA").dataset.leaving;
     $("doneB").classList.add("fade"); $("doneB").hidden = false;
     requestAnimationFrame(() => requestAnimationFrame(() => $("doneB").classList.remove("fade")));
   }, FADE_MS);
