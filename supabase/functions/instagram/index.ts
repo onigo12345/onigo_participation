@@ -103,15 +103,17 @@ async function postFeed(id: number, dataUrl: string, caption: string) {
   }
 }
 
-// 管理ページから来たか（ログイン中の管理者か）を確かめる
-async function isAdmin(req: Request) {
+// 管理ページから来たか（ログイン中の管理者か）を確かめる。だめな時は理由を返す
+async function adminCheck(req: Request): Promise<string | null> {
   const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!jwt) return false;
-  const { data } = await db.auth.getUser(jwt);
+  if (!jwt || jwt.startsWith("sb_")) return "ログインの情報が届いていません（管理ページに入り直してください）";
+  const { data, error } = await db.auth.getUser(jwt);
+  if (error) return "ログインの確認に失敗しました：" + error.message;
   const email = data?.user?.email?.toLowerCase();
-  if (!email) return false;
-  const { data: admins } = await db.from("admins").select("email");
-  return (admins || []).some((a) => String(a.email).toLowerCase() === email);
+  if (!email) return "ログイン中のメールアドレスがわかりません";
+  const { data: admins, error: e2 } = await db.from("admins").select("email");
+  if (e2) return "管理者の一覧を読めません：" + e2.message;
+  return (admins || []).some((a) => String(a.email).toLowerCase() === email) ? null : `${email} は管理者に入っていません`;
 }
 
 Deno.serve(async (req) => {
@@ -131,7 +133,8 @@ Deno.serve(async (req) => {
     return json(await task);
   }
 
-  if (!(await isAdmin(req))) return json({ status: "error", message: "管理者だけが使えます" }, 403);
+  const ng = await adminCheck(req);
+  if (ng) return json({ status: "error", message: "管理者だけが使えます（" + ng + "）" }, 403);
 
   if (body.check) {
     try {
