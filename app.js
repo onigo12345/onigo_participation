@@ -134,11 +134,23 @@ $("chooseSkip").addEventListener("click", finishWithoutPhoto);
 function showDone() {
   $("doneNo").textContent = myNo || "?";
   $("doneA").hidden = false; $("doneB").hidden = true;
+  $("doneA").classList.remove("fade"); $("doneB").classList.remove("fade");
   show("s-done");
-  clearTimeout(showDone.t); showDone.t = setTimeout(toOni, 3500);
+  clearTimeout(showDone.t); showDone.t = setTimeout(toOni, 4000);
 }
-function toOni() { clearTimeout(showDone.t); $("doneA").hidden = true; $("doneB").hidden = false; }
-$("s-done").addEventListener("click", () => { if ($("doneB").hidden) toOni(); });
+// 「楽しんできてね！」がぼんやり消えて、「近くの人と一緒に鬼やルールを決めてね！」がぼんやり現れる
+const FADE_MS = 900;
+function toOni() {
+  clearTimeout(showDone.t);
+  if (!$("doneB").hidden || $("doneA").classList.contains("fade")) return;
+  $("doneA").classList.add("fade");
+  setTimeout(() => {
+    $("doneA").hidden = true;
+    $("doneB").classList.add("fade"); $("doneB").hidden = false;
+    requestAnimationFrame(() => requestAnimationFrame(() => $("doneB").classList.remove("fade")));
+  }, FADE_MS);
+}
+$("s-done").addEventListener("click", () => toOni());
 function finishWithoutPhoto() { showDone(); }
 
 /* ---------- 手の検出モデル（裏で先に読み込む。失敗したら次の撮影でもう一度） ---------- */

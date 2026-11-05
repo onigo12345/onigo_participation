@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#faf8f4">
 <title>つかまえた。｜立命館OIC 鬼ごっこサークル</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=6">
+<link rel="stylesheet" href="fonts/fonts.css?v=7">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -109,7 +109,10 @@ input[role="switch"]:focus-visible{outline:3px solid var(--blue);outline-offset:
 .done-art{flex:1;min-height:0;position:relative;pointer-events:none}
 .done-art svg{position:absolute;right:-20vw;bottom:-18vw;height:min(95vw,calc(100% + 18vw));width:auto;aspect-ratio:1}
 .done-foot{position:absolute;left:max(20px,env(safe-area-inset-left));right:max(20px,env(safe-area-inset-right));bottom:max(20px,env(safe-area-inset-bottom))}
-#doneB h1{color:var(--blue)}
+#doneB h1{color:var(--blue);animation:none!important}
+#s-done .done-body{transition:opacity .9s ease}
+#s-done .done-body.fade{opacity:0}
+@media (prefers-reduced-motion:reduce){#s-done .done-body{transition:none}}
 #doneB .done-no{color:var(--red)}
 .done-body{position:relative;display:grid;gap:14px;margin-top:8vh}
 .done-body h1{margin:0;font-size:clamp(2.6rem,14vw,4.2rem);font-weight:900;line-height:1.15;color:var(--red)}
@@ -279,7 +282,7 @@ input[role="switch"]:focus-visible{outline:3px solid var(--blue);outline-offset:
   </div>
   <div class="done-body" id="doneB" hidden>
     <p class="done-no">さいしょに</p>
-    <h1>近くの人と<br>一緒に鬼を<br>決めてね！</h1>
+    <h1>近くの人と<br>一緒に鬼や<br>ルールを<br>決めてね！</h1>
   </div>
   <div class="done-art">
     <svg viewBox="0 0 400 400" aria-hidden="true">
@@ -331,8 +334,8 @@ input[role="switch"]:focus-visible{outline:3px solid var(--blue);outline-offset:
 <div class="toast" id="toast" hidden></div>
 
 <script src="vendor/supabase.js"></script>
-<script src="config.js?v=20261105i"></script>
-<script src="visit.js?v=20261105i"></script>
-<script type="module" src="app.js?v=20261105i"></script>
+<script src="config.js?v=20261105j"></script>
+<script src="visit.js?v=20261105j"></script>
+<script type="module" src="app.js?v=20261105j"></script>
 </body>
 </html>
