@@ -24,12 +24,14 @@ const db = createClient(URL_, KEY, { auth: { persistSession: false, autoRefreshT
 const must = ({ data, error }, what) => { if (error) throw new Error(`${what}: ${error.message}`); return data; };
 
 // ---------- 今やることがあるか ----------
+// 試運転（DRY_RUN=1）：画像の読み込み・柄の描画・保存ができるかだけを確かめる。投稿も記録もしない
+const DRY = process.env.DRY_RUN === "1";
 const st = must(await db.from("settings").select("auto_feed, feed_caption, feed_caption_first, feed_caption_blank").eq("id", 1).maybeSingle(), "settings");
-if (!st?.auto_feed) { console.log("フィードの自動投稿はオフです"); process.exit(0); }
+if (!st?.auto_feed && !DRY) { console.log("フィードの自動投稿はオフです"); process.exit(0); }
 
 // 前の列がまだ投稿し終わっていなければ、新しい列は作らない（柄と順番がずれないように）
 const open = must(await db.from("feed_rows").select("row_no, status").neq("status", "posted").order("row_no"), "feed_rows");
-if (open.length) {
+if (open.length && !DRY) {
   const r = open[0];
   if (r.status === "ready") await askPost(r.row_no);   // 頼み忘れていた列があれば、もう一度頼む
   else console.log(`${r.row_no}列目が「${r.status}」のままです。管理ページで確認してください`);
@@ -41,18 +43,20 @@ const row = state?.next_row || 1;
 const pattern = state?.pattern || JSON.parse(fs.readFileSync(path.join(ROOT, "tools/feed/seed_pattern.json"), "utf8"));
 
 // ---------- 使ってよい手を、届いた順に（1人1回・本人が最後に選んだ見え方） ----------
-const subs = must(await db.from("submissions").select("id, participant_no, image_path, feed_ok, feed_row, created_at")
-  .eq("feed_ok", true).order("created_at", { ascending: true }).limit(5000), "submissions");
+let sq = db.from("submissions").select("id, participant_no, image_path, feed_ok, feed_row, created_at").order("created_at", { ascending: true }).limit(5000);
+if (!DRY) sq = sq.eq("feed_ok", true);   // 試運転では同意に関係なく手を使う（描くだけで、投稿も保存もしない）
+const subs = must(await sq, "submissions");
 const used = new Set(subs.filter((s) => s.feed_row != null).map((s) => s.participant_no));
 const latest = new Map();
 for (const s of subs) if (!used.has(s.participant_no) && s.participant_no != null) latest.set(s.participant_no, s);
 const queue = [...latest.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
-const need = row === 1 ? 1 : 3;
-console.log(`${row}列目：使ってよい手 ${queue.length}人分（必要 ${need}人分）`);
+const need = DRY ? 1 : row === 1 ? 1 : 3;
+console.log(`${row}列目：使ってよい手 ${queue.length}人分（必要 ${need}人分）${DRY ? "【試運転】" : ""}`);
 if (queue.length < need) process.exit(0);
 
 // 1列目：真ん中に創始者（最初に届いた手）だけ。2列目から：左・真ん中・右に届いた順
-const picks = row === 1 ? [null, queue[0], null] : queue.slice(0, 3);
+const picks = DRY ? [queue[1 % queue.length], queue[0], queue[2 % queue.length]]
+  : row === 1 ? [null, queue[0], null] : queue.slice(0, 3);
 
 // ---------- 手の画像を読み込む ----------
 const hands = [];
@@ -77,8 +81,17 @@ const browser = await chromium.launch();
 const page = await browser.newPage();
 await page.goto(`http://localhost:${server.address().port}/tools/feed/render.html`);
 await page.waitForFunction(() => window.ready);
-const out = await page.evaluate((args) => window.renderRow(args), { row, pattern, hands });
+const out = await page.evaluate((args) => window.renderRow(args), { row: DRY ? Math.max(2, row) : row, pattern, hands });
 await browser.close(); server.close();
+
+if (DRY) {
+  const sizes = out.tiles.map((t) => Math.round(Buffer.from(t.split(",")[1], "base64").length / 1024) + "KB");
+  const test = `feed_dryrun_${Date.now()}.jpg`;
+  must(await db.storage.from(BUCKET).upload(test, Buffer.from(out.tiles[1].split(",")[1], "base64"), { contentType: "image/jpeg" }), "upload（試運転）");
+  must(await db.storage.from(BUCKET).remove([test]), "remove（試運転）");
+  console.log(`【試運転】手の読み込み・柄の描画・画像の保存と削除ができました。画像の大きさ：${sizes.join(" / ")}（投稿も記録もしていません）`);
+  process.exit(0);
+}
 
 // ---------- 保存して「投稿待ち」の列を作る ----------
 const caption = (i) => {

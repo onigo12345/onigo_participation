@@ -160,7 +160,8 @@ Deno.serve(async (req) => {
   }
   if (body.retryFeedRow != null && Number.isSafeInteger(Number(body.retryFeedRow))) {
     const row = Number(body.retryFeedRow);
-    await db.from("feed_rows").update({ status: "ready" }).eq("row_no", row).eq("status", "error");
+    // 失敗した列と、途中で止まった列（投稿中のまま）をやり直す。投稿済みの1枚は飛ばす
+    await db.from("feed_rows").update({ status: "ready" }).eq("row_no", row).in("status", ["error", "posting"]);
     return json(await postFeedRow(row));
   }
   return json({ status: "error", message: "unknown request" }, 400);

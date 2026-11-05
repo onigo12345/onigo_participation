@@ -3,6 +3,7 @@ import fs from "node:fs";
 const URL_ = process.env.SUPABASE_URL, KEY = process.env.SUPABASE_SECRET_KEY;
 const say = (need, why) => { console.log(why); if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `need=${need}\n`); process.exit(0); };
 if (!URL_ || !KEY) say(false, "SUPABASE_SECRET_KEY が GitHub の Secrets に入っていません");
+if (process.env.DRY_RUN === "1") say(true, "試運転です（投稿しません）");
 const get = async (q) => { const r = await fetch(`${URL_}/rest/v1/${q}`, { headers: { apikey: KEY } }); if (!r.ok) throw new Error(q + " " + r.status + " " + await r.text()); return r.json(); };
 const [st] = await get("settings?id=eq.1&select=auto_feed");
 if (!st?.auto_feed) say(false, "フィードの自動投稿はオフです");

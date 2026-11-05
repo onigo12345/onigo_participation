@@ -5,6 +5,11 @@ on:
   schedule:
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "試運転（描いて保存できるかだけ確かめる。投稿しない）"
+        type: boolean
+        default: false
 concurrency:
   group: feed
   cancel-in-progress: false
@@ -17,6 +22,7 @@ jobs:
     env:
       SUPABASE_URL: https://axwbndpdzlajvpqnegde.supabase.co
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

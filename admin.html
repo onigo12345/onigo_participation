@@ -318,7 +318,8 @@ async function loadFeed(){
     const ps=(posts.data||[]).filter(p=>p.row_no===r.row_no).sort((a,b)=>a.pos-b.pos);
     const tr=document.createElement("tr");
     tr.innerHTML=`<td>${r.row_no}列目</td><td>${ROWST[r.status]||r.status}${r.error?`<br><span class="posterr">${esc(r.error)}</span>`:""}</td><td>${ps.map(p=>p.participant_no?"No."+pad(p.participant_no):"手なし").join("・")}</td><td></td>`;
-    if(r.status==="error"){ const b=btn("もう一度投稿","blue",async()=>{ b.disabled=true; b.textContent="投稿中…";
+    const stuck=r.status==="posting" && Date.now()-new Date(r.created_at).getTime()>15*60*1000;   // 15分以上「投稿中」のまま
+    if(r.status==="error"||stuck){ const b=btn(stuck?"止まっているのでやり直す":"もう一度投稿","blue",async()=>{ b.disabled=true; b.textContent="投稿中…";
       try{ await ig({retryFeedRow:r.row_no}); say(`${r.row_no}列目を投稿しました。`); }catch(e){ say("投稿できませんでした（"+e.message+"）",true); } loadFeed(); });
       tr.lastChild.append(b); }
     t.append(tr);
