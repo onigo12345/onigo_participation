@@ -305,7 +305,8 @@ create table if not exists settings (
 insert into settings (id) values (1) on conflict do nothing;
 alter table settings enable row level security;
 revoke all on settings from anon, authenticated;
-grant select, update (auto_story, story_daily_cap) on settings to authenticated;
+grant select on settings to authenticated;
+grant update (auto_story, story_daily_cap) on settings to authenticated;
 drop policy if exists "admin manages settings" on settings;
 create policy "admin manages settings" on settings for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
