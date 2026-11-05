@@ -145,6 +145,16 @@ grant execute on function public.save_profile(text, text, text, text, text) to a
 grant execute on function public.mark_visit(text, text)                     to anon, authenticated;
 grant execute on function public.leave_visit(text, text, smallint)          to anon, authenticated;
 
+-- ---------- 表を使える役割（「新しい表を自動で公開」をオフにしたプロジェクトでも動くように、明示する） ----------
+grant usage on schema public to anon, authenticated;
+revoke all on participants, visits, spots, submissions, admins from anon, authenticated;
+grant select                 on participants to authenticated;
+grant select                 on visits       to authenticated;
+grant select, insert, update on spots        to authenticated;
+grant insert                 on submissions  to anon;
+grant select, delete         on submissions  to authenticated;
+grant usage, select on all sequences in schema public to anon, authenticated;
+
 -- ---------- 読み書きのルール ----------
 -- 参加者のスマホからは、上の処理を通してしか読み書きできない（表を直接は見られない）
 drop policy if exists "anyone can join"     on participants;
