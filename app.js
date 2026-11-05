@@ -7,6 +7,15 @@ const CFG = window.APP_CONFIG || {};
 const W = 1080, H = 1920;   // Instagramストーリー（9:16）
 const C = { red: "#e82c34", blue: "#1c48c4", purple: "#9a26d9", paper: "#faf8f4", ink: "#19161e" };
 const $ = (id) => document.getElementById(id);
+// 古いページ（ブラウザに残ったもの）と新しいプログラムが混ざった時は、一度だけ新しく読み直す
+if (!$("ruleNext") || !$("chooseSkip")) {
+  let tried = false; try { tried = sessionStorage.getItem("onigokko_reload") === location.search; } catch {}
+  if (!tried) {
+    try { sessionStorage.setItem("onigokko_reload", location.search); } catch {}
+    const u = new URL(location.href); u.searchParams.set("v", Date.now().toString(36)); location.replace(u.href);
+  }
+  await new Promise(() => {});   // 読み直しが終わるまで止めておく
+}
 const sb = (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase)
   ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
 if (CFG.SUPABASE_URL && !sb) console.error("Supabase のライブラリを読み込めませんでした。お試しモードで動きます。");
