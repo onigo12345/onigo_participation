@@ -315,19 +315,34 @@ document.addEventListener("click", async (e) => {
     s.active = !s.active; build(); }
   const c = e.target.closest("[data-cand]"); if (c) { $("spotForm").reset(); $("spName").value = c.dataset.cand; $("spotDlg").showModal(); }
 });
-function qrCanvas(url, arrive) {
-  const q = qrcode(0, "H"); q.addData(url); q.make(); const n = q.getModuleCount();
-  const W = 1080, H = 1350, c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
-  const band = arrive ? C.red : C.blue, F = (w, s) => `${w} ${s}px -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif`;
-  g.fillStyle = "#faf8f4"; g.fillRect(0, 0, W, H); g.textBaseline = "top";
-  g.fillStyle = C.ink; g.font = F(700, 26); g.fillText("RITSUMEIKAN OIC  ONIGOKKO CIRCLE", 60, 60);
-  g.fillStyle = band; g.font = F(900, 140); g.fillText(arrive ? "つかまえた。" : "またね。", 60, 110);
-  const cell = Math.floor(700 / (n + 4)), off = (W - cell * (n + 4)) / 2;
-  g.fillStyle = C.ink; for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) g.fillRect(off + (x + 2) * cell, 330 + (y + 2) * cell, cell, cell);
-  g.fillStyle = band; g.fillRect(0, 1080, W, H - 1080); g.fillStyle = "#faf8f4"; g.textAlign = "center";
-  g.font = F(900, 52); g.fillText(arrive ? "来たら読み込んで、手をかざしてね！" : "帰る前に、もう一度読み込んでね！", W / 2, 1120);
-  g.font = F(700, 30); g.fillText(arrive ? "@onigo12345　立命館OIC 岩倉公園" : "今日あそんだ時間がわかるよ　@onigo12345", W / 2, 1230);
+// QRのポスター（B3の縦横比・印刷用に大きめ）。サークル名をいちばん大きく
+function qrPoster(q, arrive, F, C) {
+  const n = q.getModuleCount();
+  const W = 2150, H = Math.round(W * 515 / 364), S = W / 1000, h = H / S;
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+  const band = arrive ? C.red : C.blue;
+  g.scale(S, S); g.fillStyle = C.paper; g.fillRect(0, 0, 1000, h); g.textBaseline = "top";
+  g.fillStyle = C.ink; g.font = F(700, 22); g.fillText("RITSUMEIKAN OIC  ONIGOKKO CIRCLE", 60, 58);
+  let fs = 176; g.font = F(900, fs);
+  const wide = Math.max(g.measureText("おにごっこ").width, g.measureText("サークル").width);
+  if (wide > 880) { fs *= 880 / wide; g.font = F(900, fs); }
+  g.fillStyle = band; g.fillText("おにごっこ", 56, 100); g.fillText("サークル", 56, 100 + fs * 1.06);
+  const bandTop = h - 250, top = 110 + fs * 2.12 + 20, size = Math.min(660, bandTop - 36 - top);
+  g.fillStyle = band; g.fillRect(0, bandTop, 1000, h - bandTop);
+  g.fillStyle = C.paper; g.textAlign = "center";
+  g.font = F(900, 46); g.fillText(arrive ? "来たら読み込んで、手をかざしてね！" : "帰る前に、もう一度読み込んでね！", 500, bandTop + 40);
+  g.font = F(700, 28); g.fillText(arrive ? "@onigo12345　立命館OIC 岩倉公園" : "今日あそんだ時間がわかるよ　@onigo12345", 500, bandTop + 118);
+  g.globalAlpha = .85; g.font = F(500, 20); g.fillText("大学非公認の学生有志サークル", 500, bandTop + 176); g.globalAlpha = 1;
+  // QRは画素ぴったりに描く（にじまないように）
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const cell = Math.floor(size * S / (n + 4)), x0 = Math.round((W - cell * (n + 4)) / 2), y0 = Math.round(top * S);
+  g.fillStyle = C.paper; g.fillRect(x0, y0, cell * (n + 4), cell * (n + 4)); g.fillStyle = C.ink;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) g.fillRect(x0 + (x + 2) * cell, y0 + (y + 2) * cell, cell, cell);
   return c;
+}
+function qrCanvas(url, arrive) {
+  const q = qrcode(0, "H"); q.addData(url); q.make();
+  return qrPoster(q, arrive, (w, s) => `${w} ${s}px -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif`, { red: C.red, blue: C.blue, ink: C.ink, paper: "#faf8f4" });
 }
 function showQR(token, name) {
   const box = $("qrPair"); box.innerHTML = "";

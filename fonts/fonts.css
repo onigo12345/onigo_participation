@@ -1,5 +1,5 @@
 /* Noto Sans JP（SIL Open Font License 1.1）。このサイトで使う文字だけを抜き出して同梱しています。
    外部のフォント配信（Google Fonts など）には接続しません。足りない文字は端末のフォントで表示されます。 */
-@font-face{font-family:"Noto Sans JP";font-weight:500;font-display:swap;src:url("NotoSansJP-500.woff2?v=3") format("woff2")}
-@font-face{font-family:"Noto Sans JP";font-weight:700;font-display:swap;src:url("NotoSansJP-700.woff2?v=3") format("woff2")}
-@font-face{font-family:"Noto Sans JP";font-weight:900;font-display:swap;src:url("NotoSansJP-900.woff2?v=3") format("woff2")}
+@font-face{font-family:"Noto Sans JP";font-weight:500;font-display:swap;src:url("NotoSansJP-500.woff2?v=4") format("woff2")}
+@font-face{font-family:"Noto Sans JP";font-weight:700;font-display:swap;src:url("NotoSansJP-700.woff2?v=4") format("woff2")}
+@font-face{font-family:"Noto Sans JP";font-weight:900;font-display:swap;src:url("NotoSansJP-900.woff2?v=4") format("woff2")}
