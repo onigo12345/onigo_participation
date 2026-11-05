@@ -356,6 +356,7 @@ async function generate(photo) {
     await loadFonts();
     // 以降の処理は手のまわりだけを切り出して行う（メモリと時間の節約）
     const crop = cropToHand(photo, lm);
+    evenBrightness(crop.photo, crop.lm);   // 暗い場所で撮っても、手の明るさがそろうように
     free(photo); free(lastPhoto);
     lastPhoto = crop.photo; lastLm = crop.lm; photoId++;
     filterMode = "none";
@@ -384,6 +385,34 @@ function armEndOf(lm, armLen) {
   return { x: lm[0].x + ux / l * armLen, y: lm[0].y + uy / l * armLen };
 }
 // 写真から手のまわりだけを切り出し、長い辺が1400pxを超えないように縮める
+// 手の明るさをそろえる：手のひらの真ん中あたりの明るさ（中央値）を測り、
+// 暗い写真は明るく、明るすぎる写真は少し抑える（ガンマ補正。白とびしにくい）
+function evenBrightness(c, lm) {
+  const g = c.getContext("2d", { willReadFrequently: true });
+  const ids = [0, 5, 9, 13, 17];
+  const cx = ids.reduce((s, i) => s + lm[i].x, 0) / ids.length, cy = ids.reduce((s, i) => s + lm[i].y, 0) / ids.length;
+  const r = dist(lm[0], lm[9]) * 0.45;
+  const x0 = Math.max(0, Math.floor(cx - r)), y0 = Math.max(0, Math.floor(cy - r));
+  const w = Math.min(c.width, Math.ceil(cx + r)) - x0, h = Math.min(c.height, Math.ceil(cy + r)) - y0;
+  if (w < 4 || h < 4) return;
+  const d = g.getImageData(x0, y0, w, h).data, lum = [];
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) {
+    if ((x + x0 - cx) ** 2 + (y + y0 - cy) ** 2 > r * r) continue;
+    const i = (y * w + x) * 4; lum.push((0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255);
+  }
+  if (lum.length < 20) return;
+  lum.sort((a, b) => a - b);
+  const m = Math.min(0.97, Math.max(0.03, lum[lum.length >> 1]));
+  const gamma = Math.min(1.25, Math.max(0.4, Math.log(BRIGHT_TARGET) / Math.log(m)));
+  if (Math.abs(gamma - 1) < 0.04) return;
+  const lut = new Uint8ClampedArray(256);
+  for (let i = 0; i < 256; i++) lut[i] = Math.round(255 * Math.pow(i / 255, gamma));
+  const all = g.getImageData(0, 0, c.width, c.height), p = all.data;
+  for (let i = 0; i < p.length; i += 4) { p[i] = lut[p[i]]; p[i + 1] = lut[p[i + 1]]; p[i + 2] = lut[p[i + 2]]; }
+  g.putImageData(all, 0, 0);
+}
+const BRIGHT_TARGET = 0.6;   // 手のひらの明るさの目標（0〜1）
+
 function cropToHand(photo, lm) {
   const palm = dist(lm[0], lm[9]), pts = [...lm, armEndOf(lm, palm * ARM)], p = palm * 0.9;
   const x0 = Math.max(0, Math.min(...pts.map((q) => q.x)) - p), x1 = Math.min(photo.width, Math.max(...pts.map((q) => q.x)) + p);
