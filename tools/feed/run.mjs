@@ -83,7 +83,7 @@ await browser.close(); server.close();
 // ---------- 保存して「投稿待ち」の列を作る ----------
 const caption = (i) => {
   if (row === 1) return i === 1 ? st.feed_caption_first : st.feed_caption_blank;
-  return String(st.feed_caption || "").replaceAll("{no}", String(picks[i].participant_no).padStart(3, "0"));
+  return String(st.feed_caption || "").replaceAll("{no}", String(picks[i].participant_no));
 };
 const stamp = Date.now();
 const posts = [];

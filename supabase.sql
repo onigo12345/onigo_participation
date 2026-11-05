@@ -395,28 +395,20 @@ create trigger story_signal after update of story_requested_at on submissions
 alter table submissions add column if not exists feed_row int;   -- どの列に使ったか（1人1回まで）
 alter table settings add column if not exists auto_feed boolean not null default false;
 alter table settings add column if not exists feed_caption text not null default
-  'No.{no} のおともだち、つかまえた。
+  '{no}にんめのおともだち！
+つかまえた！
+また来てね👹
 
-立命館OIC 岩倉公園で、鬼ごっこだけするサークルです。
-学部・学年問わず、だれでも途中参加OK。
-3枚で1つの柄になっています。
-
-※大学非公認の学生有志サークルです
-#鬼ごっこ #鬼ごっこサークル #立命館OIC #岩倉公園';
+#鬼ごっこサークル
+#立命館大学';
 alter table settings add column if not exists feed_caption_first text not null default
-  'はじまりの手。
+  'このゆび、とーまれ！
 
-鬼ごっこだけするサークル、はじめました。
-立命館OIC 岩倉公園で、隔週木曜に遊んでいます。
-ここから1人ずつ、つかまえていきます。
-
-※大学非公認の学生有志サークルです
-#鬼ごっこ #鬼ごっこサークル #立命館OIC #岩倉公園';
+#鬼ごっこサークル
+#立命館大学';
 alter table settings add column if not exists feed_caption_blank text not null default
-  '鬼ごっこサークル、はじめました。
-
-※大学非公認の学生有志サークルです
-#鬼ごっこ #鬼ごっこサークル #立命館OIC #岩倉公園';
+  '#鬼ごっこサークル
+#立命館大学';
 grant update (auto_feed, feed_caption, feed_caption_first, feed_caption_blank) on settings to authenticated;
 
 create table if not exists feed_rows (
