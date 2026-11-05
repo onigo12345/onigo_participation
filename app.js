@@ -304,7 +304,7 @@ function softFilter(photo, lm) {
   g.globalCompositeOperation = "screen"; g.globalAlpha = 0.22; g.drawImage(haze, 0, 0);
   // 白いベール
   g.globalCompositeOperation = "source-over"; g.globalAlpha = 0.05; g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.globalAlpha = 1;
-  free(smooth, haze); return c;
+  free(smooth, haze); capBrightness(c, lm); return c;
 }
 // 強くぼかす：細かいところは見えず、手の形と色だけがわかる程度
 function strongBlur(photo, lm) {
@@ -315,7 +315,7 @@ function strongBlur(photo, lm) {
   const haze = tone(blurred(photo, Math.max(9, palm * 0.22)), 1.25, 1, 1);
   g.globalCompositeOperation = "screen"; g.globalAlpha = 0.28; g.drawImage(haze, 0, 0);
   g.globalCompositeOperation = "source-over"; g.globalAlpha = 0.09; g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.globalAlpha = 1;
-  free(heavy, haze); return c;
+  free(heavy, haze); capBrightness(c, lm); return c;
 }
 // （使っていない）手の形をオレンジで塗る見え方の色
 const SHAPE_COLOR = "#f5821f";
@@ -385,33 +385,45 @@ function armEndOf(lm, armLen) {
   return { x: lm[0].x + ux / l * armLen, y: lm[0].y + uy / l * armLen };
 }
 // 写真から手のまわりだけを切り出し、長い辺が1400pxを超えないように縮める
-// 手の明るさをそろえる：手のひらの真ん中あたりの明るさ（中央値）を測り、
-// 暗い写真は明るく、明るすぎる写真は少し抑える（ガンマ補正。白とびしにくい）
-function evenBrightness(c, lm) {
+// 手の明るさをそろえる：手のひらの真ん中あたりの明るさ（中央値）を測り、ガンマ補正で目標の明るさにする
+// （暗い写真は明るく、明るすぎる写真は暗く。白とびしにくい）
+const BRIGHT_TARGET = 0.63;   // 手のひらの明るさの目標であり、上限（0〜1）。これより明るくはしない
+function palmBrightness(c, lm) {
   const g = c.getContext("2d", { willReadFrequently: true });
   const ids = [0, 5, 9, 13, 17];
   const cx = ids.reduce((s, i) => s + lm[i].x, 0) / ids.length, cy = ids.reduce((s, i) => s + lm[i].y, 0) / ids.length;
   const r = dist(lm[0], lm[9]) * 0.45;
   const x0 = Math.max(0, Math.floor(cx - r)), y0 = Math.max(0, Math.floor(cy - r));
   const w = Math.min(c.width, Math.ceil(cx + r)) - x0, h = Math.min(c.height, Math.ceil(cy + r)) - y0;
-  if (w < 4 || h < 4) return;
+  if (w < 4 || h < 4) return null;
   const d = g.getImageData(x0, y0, w, h).data, lum = [];
   for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) {
     if ((x + x0 - cx) ** 2 + (y + y0 - cy) ** 2 > r * r) continue;
     const i = (y * w + x) * 4; lum.push((0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255);
   }
-  if (lum.length < 20) return;
+  if (lum.length < 20) return null;
   lum.sort((a, b) => a - b);
-  const m = Math.min(0.97, Math.max(0.03, lum[lum.length >> 1]));
-  const gamma = Math.min(1.25, Math.max(0.4, Math.log(BRIGHT_TARGET) / Math.log(m)));
-  if (Math.abs(gamma - 1) < 0.04) return;
+  return Math.min(0.97, Math.max(0.03, lum[lum.length >> 1]));
+}
+function applyGamma(c, gamma) {
+  if (Math.abs(gamma - 1) < 0.02) return;
+  const g = c.getContext("2d", { willReadFrequently: true });
   const lut = new Uint8ClampedArray(256);
   for (let i = 0; i < 256; i++) lut[i] = Math.round(255 * Math.pow(i / 255, gamma));
   const all = g.getImageData(0, 0, c.width, c.height), p = all.data;
   for (let i = 0; i < p.length; i += 4) { p[i] = lut[p[i]]; p[i + 1] = lut[p[i + 1]]; p[i + 2] = lut[p[i + 2]]; }
   g.putImageData(all, 0, 0);
 }
-const BRIGHT_TARGET = 0.63;   // 手のひらの明るさの目標（0〜1）
+// 撮った写真：目標の明るさにそろえる
+function evenBrightness(c, lm) {
+  const m = palmBrightness(c, lm); if (m == null) return;
+  applyGamma(c, Math.min(3, Math.max(0.4, Math.log(BRIGHT_TARGET) / Math.log(m))));
+}
+// ふんわり・強くぼかすの後：上限より明るくなっていたら、上限まで戻す（暗くはしない）
+function capBrightness(c, lm) {
+  const m = palmBrightness(c, lm); if (m == null || m <= BRIGHT_TARGET) return;
+  applyGamma(c, Math.min(3, Math.log(BRIGHT_TARGET) / Math.log(m)));
+}
 
 function cropToHand(photo, lm) {
   const palm = dist(lm[0], lm[9]), pts = [...lm, armEndOf(lm, palm * ARM)], p = palm * 0.9;
