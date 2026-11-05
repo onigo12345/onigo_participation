@@ -73,6 +73,7 @@ td.n,th.n{text-align:right}
 .post .ok{color:#1d7a3e;font-weight:700} .post .ng{color:var(--red);font-weight:700}
 .posterr{font-size:.72rem;color:var(--red);word-break:break-all}
 .feedbox{display:grid;gap:6px;padding:0 10px 10px}
+#feedbox textarea{font:inherit;font-size:.85rem;padding:8px;border:1px solid var(--line);resize:vertical;color:var(--ink);line-height:1.6}
 .feedbox textarea{font:inherit;font-size:.8rem;padding:8px;border:1px solid var(--line);min-height:5em;resize:vertical}
 </style>
 </head>
@@ -114,6 +115,17 @@ td.n,th.n{text-align:right}
       <label class="toggle"><input type="checkbox" id="autoStory"> 参加者が「載せる」を選んだ画像を、ストーリーに自動で投稿する</label>
       <div class="tools"><button class="btn ghost" id="igCheck" type="button">Instagramとの接続を確認</button><span class="hint" id="igState"></span></div>
       <p class="hint">自動で投稿するのは、参加者が「参加する！」の時にチェックを付けたままにした画像だけです（1人1日1回、24時間に最大<span id="capN">30</span>件）。止めている間に参加した人の画像は、各画像の「ストーリーに投稿」で後から出せます。フィードの投稿は、本人が「投稿にも使ってよい」を選んだ手の素材を公式投稿メーカーに入れて作ります。</p>
+    </div>
+    <div class="igbox" id="feedbox" hidden>
+      <h2 style="margin:0">フィード（3枚で1列・糸の柄がつながる）</h2>
+      <label class="toggle"><input type="checkbox" id="autoFeed"> 「投稿にも使ってよい」の手が1列ぶんたまったら、自動で投稿する</label>
+      <p class="hint" id="feedInfo"></p>
+      <p class="hint">1列目は真ん中に最初に届いた手（創始者）だけ、2列目からは届いた順に3人分を左・真ん中・右に並べ、公式投稿メーカーと同じ柄で描きます。投稿は右 → 真ん中 → 左の順（プロフィールで左上に来るのが左）。確認は15分ごとです。</p>
+      <label>投稿の文章（2列目から。{no} が参加番号になります）<textarea id="capMain" rows="9"></textarea></label>
+      <label>1列目・真ん中（創始者の手）の文章<textarea id="capFirst" rows="8"></textarea></label>
+      <label>1列目・左右（手なし）の文章<textarea id="capBlank" rows="5"></textarea></label>
+      <div class="tools"><button class="btn blue" id="capSave" type="button">文章を保存</button><span class="hint" id="capState"></span></div>
+      <div class="tablewrap"><table id="feedRows"></table></div>
     </div>
     <div class="filter" id="filter" role="group" aria-label="見え方で絞り込む">
       <button type="button" data-v="all" aria-pressed="true">すべて</button>
@@ -221,7 +233,7 @@ async function load(){
     const {data}=await sb.storage.from(BUCKET).createSignedUrls(paths.slice(i,i+100),3600);
     (data||[]).forEach(d=>{ if(d.signedUrl) urls[d.path]=d.signedUrl; });
   }
-  say(""); render();
+  say(""); render(); loadFeed();
 }
 
 function render(){
@@ -305,6 +317,44 @@ $("igCheck").addEventListener("click",async()=>{
   $("igState").textContent="確認中…";
   try{ const r=await ig({check:true}); $("igState").textContent=`つながっています（@${r.username}）`; }
   catch(e){ $("igState").textContent="つながっていません："+e.message; }
+});
+const ROWST={ready:"投稿待ち",posting:"投稿中",posted:"投稿済み",error:"失敗"};
+async function loadFeed(){
+  const {data:st,error}=await sb.from("settings").select("auto_feed,feed_caption,feed_caption_first,feed_caption_blank").eq("id",1).maybeSingle();
+  if(error||!st){ $("feedbox").hidden=true; return; }
+  $("feedbox").hidden=false; $("autoFeed").checked=st.auto_feed;
+  if(!$("capMain").dataset.dirty){ $("capMain").value=st.feed_caption; $("capFirst").value=st.feed_caption_first; $("capBlank").value=st.feed_caption_blank; }
+  const [rows,posts,state]=await Promise.all([
+    sb.from("feed_rows").select("*").order("row_no",{ascending:false}),
+    sb.from("feed_posts").select("row_no,pos,ord,participant_no,status,error").order("row_no",{ascending:false}),
+    sb.from("feed_state").select("next_row").eq("id",1).maybeSingle()]);
+  const next=state.data?.next_row||1, need=next===1?1:3;
+  const waiting=new Set(all.filter(r=>r.feed_ok&&r.feed_row==null).map(r=>r.participant_no));
+  const used=new Set(all.filter(r=>r.feed_row!=null).map(r=>r.participant_no));
+  const n=[...waiting].filter(x=>!used.has(x)).length;
+  $("feedInfo").textContent=`次は${next}列目。「投稿にも使ってよい」の手：${n}人分（あと${Math.max(0,need-n)}人分で投稿）`;
+  const t=$("feedRows"); t.innerHTML="<tr><th>列</th><th>状態</th><th>左・真ん中・右</th><th></th></tr>";
+  for(const r of rows.data||[]){
+    const ps=(posts.data||[]).filter(p=>p.row_no===r.row_no).sort((a,b)=>a.pos-b.pos);
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${r.row_no}列目</td><td>${ROWST[r.status]||r.status}${r.error?`<br><span class="posterr">${esc(r.error)}</span>`:""}</td><td>${ps.map(p=>p.participant_no?"No."+pad(p.participant_no):"手なし").join("・")}</td><td></td>`;
+    if(r.status==="error"){ const b=btn("もう一度投稿","blue",async()=>{ b.disabled=true; b.textContent="投稿中…";
+      try{ await ig({retryFeedRow:r.row_no}); say(`${r.row_no}列目を投稿しました。`); }catch(e){ say("投稿できませんでした（"+e.message+"）",true); } loadFeed(); });
+      tr.lastChild.append(b); }
+    t.append(tr);
+  }
+  if(!(rows.data||[]).length) t.insertAdjacentHTML("beforeend",'<tr><td colspan="4">まだありません。</td></tr>');
+}
+["capMain","capFirst","capBlank"].forEach(id=>$(id).addEventListener("input",()=>{$("capMain").dataset.dirty="1"; $("capState").textContent="未保存";}));
+$("capSave").addEventListener("click",async()=>{
+  const {error}=await sb.from("settings").update({feed_caption:$("capMain").value,feed_caption_first:$("capFirst").value,feed_caption_blank:$("capBlank").value}).eq("id",1);
+  if(error){ $("capState").textContent="保存できませんでした（"+error.message+"）"; return; }
+  delete $("capMain").dataset.dirty; $("capState").textContent="保存しました（次に作る列から使われます）";
+});
+$("autoFeed").addEventListener("change",async e=>{
+  const {error}=await sb.from("settings").update({auto_feed:e.target.checked}).eq("id",1);
+  if(error){ say("変更できませんでした（"+error.message+"）",true); e.target.checked=!e.target.checked; return; }
+  say(e.target.checked?"フィードの自動投稿を始めました。":"フィードの自動投稿を止めました。");
 });
 async function loadSettings(){
   const {data,error}=await sb.from("settings").select("auto_story,story_daily_cap").eq("id",1).maybeSingle();

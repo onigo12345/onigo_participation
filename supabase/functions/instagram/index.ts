@@ -2,7 +2,8 @@
 //
 // ・ストーリー：参加者が「載せる」を選ぶと、データベースから合図（{story: 画像の番号}）が届く。
 //   合図の中身は信用せず、データベースの状態（claim_story）を見て、投稿してよい画像だけを1回だけ投稿する。
-// ・フィード／ストーリーの再投稿／接続の確認：管理ページから。ログイン中の管理者だけが使える。
+// ・フィード：GitHub Actions（tools/feed）が作った列（3枚）を、右 → 真ん中 → 左の順に投稿する。
+// ・ストーリーやフィードのやり直し／接続の確認：管理ページから。ログイン中の管理者だけが使える。
 //
 // Instagram の鍵（アクセストークン）は、Supabase の Edge Functions → Secrets の IG_TOKEN にだけ置く。
 // このファイルやデータベース、参加者のブラウザには置かない。
@@ -80,28 +81,29 @@ async function postStory(id: number, force = false) {
   }
 }
 
-async function postFeed(id: number, dataUrl: string, caption: string) {
-  const { data: row } = await db.from("submissions").select("id, participant_no, feed_posted_at, feed_ok").eq("id", id).maybeSingle();
-  if (!row) return { status: "error", message: "画像が見つかりません" };
-  if (!row.feed_ok) return { status: "error", message: "本人が「投稿にも使ってよい」を選んでいない画像です" };
-  if (row.feed_posted_at) return { status: "error", message: "この画像はもうフィードに投稿しています" };
-  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");
-  if (!m) return { status: "error", message: "画像の形式が正しくありません" };
-  const bytes = Uint8Array.from(atob(m[1]), (c) => c.charCodeAt(0));
-  if (bytes.length > 2_000_000) return { status: "error", message: "画像が大きすぎます" };
-  const path = `feed_${id}_${Date.now()}.jpg`;
-  const up = await db.storage.from(BUCKET).upload(path, bytes, { contentType: "image/jpeg" });
-  if (up.error) return { status: "error", message: up.error.message };
-  try {
-    const media = await publish(await signedUrl(path), "feed", String(caption || "").slice(0, 2000));
-    await db.from("submissions").update({ feed_posted_at: new Date().toISOString(), feed_media_id: media, post_error: null }).eq("id", id);
-    return { status: "ok", media };
-  } catch (e) {
-    await db.from("submissions").update({ post_error: "フィード：" + msg(e) }).eq("id", id);
-    return { status: "error", message: msg(e) };
-  } finally {
-    await db.storage.from(BUCKET).remove([path]);   // Instagram に渡したら、投稿用の一時ファイルは消す
+// フィード：GitHub Actions が作った「投稿待ち」の列を、右 → 真ん中 → 左の順に投稿する
+// 同じ列を2か所から同時に投稿しないよう、列を「投稿中」にできた1か所だけが進める
+async function postFeedRow(row: number) {
+  const { data: claimed, error } = await db.from("feed_rows").update({ status: "posting", error: null })
+    .eq("row_no", row).eq("status", "ready").select("row_no");
+  if (error) return { status: "error", message: error.message };
+  if (!claimed?.length) return { status: "skip" };
+  const { data: posts } = await db.from("feed_posts").select("*").eq("row_no", row).order("ord");
+  for (const p of posts || []) {
+    if (p.status === "posted") continue;
+    try {
+      const media = await publish(await signedUrl(p.path), "feed", p.caption || "");
+      await db.from("feed_posts").update({ status: "posted", media_id: media, error: null, posted_at: new Date().toISOString() }).eq("id", p.id);
+      if (p.submission_id) await db.from("submissions").update({ feed_posted_at: new Date().toISOString(), feed_media_id: media }).eq("id", p.submission_id);
+    } catch (e) {
+      await db.from("feed_posts").update({ status: "error", error: msg(e) }).eq("id", p.id);
+      await db.from("feed_rows").update({ status: "error", error: msg(e) }).eq("row_no", row);
+      return { status: "error", message: msg(e) };
+    }
+    await sleep(4000);   // 投稿の順番がInstagramの中でも入れ替わらないよう、少し間をあける
   }
+  await db.from("feed_rows").update({ status: "posted", posted_at: new Date().toISOString() }).eq("row_no", row);
+  return { status: "ok" };
 }
 
 // 管理ページから来たか（ログイン中の管理者か）を確かめる。だめな時は理由を返す
@@ -122,7 +124,14 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   if (!TOKEN) return json({ status: "error", message: "IG_TOKEN（Instagramの鍵）が Secrets に入っていません" }, 500);
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-  const id = Number(body.story ?? body.retryStory ?? body.feed);
+  const id = Number(body.story ?? body.retryStory);
+
+  // GitHub Actions からの合図：「投稿待ち」の列を順番どおりに投稿するだけなので、ログインは要らない
+  if (body.feedRow != null) {
+    const row = Number(body.feedRow);
+    if (!Number.isSafeInteger(row)) return json({ error: "bad row" }, 400);
+    return json(await postFeedRow(row));
+  }
 
   // データベースからの合図：誰が呼んでも、投稿してよい画像を1回だけ投稿するだけなので、ログインは要らない
   if (body.story != null) {
@@ -147,8 +156,10 @@ Deno.serve(async (req) => {
     await db.from("submissions").update({ story_posting_at: null }).eq("id", id).is("story_posted_at", null);
     return json(await postStory(id, true));
   }
-  if (body.feed != null && Number.isSafeInteger(id)) {
-    return json(await postFeed(id, String(body.image || ""), String(body.caption || "")));
+  if (body.retryFeedRow != null && Number.isSafeInteger(Number(body.retryFeedRow))) {
+    const row = Number(body.retryFeedRow);
+    await db.from("feed_rows").update({ status: "ready" }).eq("row_no", row).eq("status", "error");
+    return json(await postFeedRow(row));
   }
   return json({ status: "error", message: "unknown request" }, 400);
 });

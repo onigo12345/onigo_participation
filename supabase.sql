@@ -389,6 +389,79 @@ create trigger story_signal after update of story_requested_at on submissions
   for each row when (old.story_requested_at is null and new.story_requested_at is not null)
   execute function public._story_signal();
 
+-- ---------- フィードの自動投稿（3枚で1列・糸の柄がつながる） ----------
+-- GitHub Actions（tools/feed）が、使ってよい手が1列ぶんたまったら3枚を描いて「投稿待ち」の列を作り、
+-- Edge Function「instagram」が右 → 真ん中 → 左の順に投稿する
+alter table submissions add column if not exists feed_row int;   -- どの列に使ったか（1人1回まで）
+alter table settings add column if not exists auto_feed boolean not null default false;
+alter table settings add column if not exists feed_caption text not null default
+  'No.{no} のおともだち、つかまえた。
+
+立命館OIC 岩倉公園で、鬼ごっこだけするサークルです。
+学部・学年問わず、だれでも途中参加OK。
+3枚で1つの柄になっています。
+
+※大学非公認の学生有志サークルです
+#鬼ごっこ #鬼ごっこサークル #立命館OIC #岩倉公園';
+alter table settings add column if not exists feed_caption_first text not null default
+  'はじまりの手。
+
+鬼ごっこだけするサークル、はじめました。
+立命館OIC 岩倉公園で、隔週木曜に遊んでいます。
+ここから1人ずつ、つかまえていきます。
+
+※大学非公認の学生有志サークルです
+#鬼ごっこ #鬼ごっこサークル #立命館OIC #岩倉公園';
+alter table settings add column if not exists feed_caption_blank text not null default
+  '鬼ごっこサークル、はじめました。
+
+※大学非公認の学生有志サークルです
+#鬼ごっこ #鬼ごっこサークル #立命館OIC #岩倉公園';
+grant update (auto_feed, feed_caption, feed_caption_first, feed_caption_blank) on settings to authenticated;
+
+create table if not exists feed_rows (
+  row_no int primary key,
+  status text not null default 'ready',     -- ready（投稿待ち）／posting（投稿中）／posted（投稿済み）／error（失敗）
+  error text,
+  created_at timestamptz not null default now(),
+  posted_at timestamptz
+);
+create table if not exists feed_posts (
+  id bigint generated always as identity primary key,
+  row_no int not null references feed_rows(row_no) on delete cascade,
+  pos smallint not null,                     -- 0 左／1 真ん中／2 右
+  ord smallint not null,                     -- 投稿する順番（右が1）
+  path text not null,
+  submission_id bigint,
+  participant_no bigint,
+  caption text not null default '',
+  status text not null default 'ready',
+  media_id text,
+  error text,
+  posted_at timestamptz
+);
+create table if not exists feed_state (
+  id int primary key default 1 check (id = 1),
+  pattern jsonb,                             -- これまでの柄（次の列へつなぐため）
+  next_row int not null default 1,
+  updated_at timestamptz
+);
+alter table feed_rows  enable row level security;
+alter table feed_posts enable row level security;
+alter table feed_state enable row level security;
+revoke all on feed_rows, feed_posts, feed_state from anon, authenticated;
+grant select on feed_rows, feed_posts, feed_state to authenticated;
+drop policy if exists "admin reads feed rows"  on feed_rows;
+drop policy if exists "admin reads feed posts" on feed_posts;
+drop policy if exists "admin reads feed state" on feed_state;
+create policy "admin reads feed rows"  on feed_rows  for select to authenticated using (public.is_admin());
+create policy "admin reads feed posts" on feed_posts for select to authenticated using (public.is_admin());
+create policy "admin reads feed state" on feed_state for select to authenticated using (public.is_admin());
+-- サーバー（GitHub Actions と Edge Function）が使う
+grant select, insert, update on feed_rows, feed_posts, feed_state to service_role;
+grant usage, select on all sequences in schema public to service_role;
+grant select on settings to service_role;
+
 -- ---------- 最初のQR（代表が設置するもの） ----------
 insert into spots (token, placer, note) values ('fjpc5t6gz9', '代表', '最初のQR') on conflict (token) do nothing;
 

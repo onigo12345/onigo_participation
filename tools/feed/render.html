@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../fonts/fonts.css">
+<title>フィードの1列を描く（GitHub Actions の中で使う）</title></head>
+<body>
+<script>
+// 公式投稿メーカー（3枚で1列・糸の柄が投稿をまたいでつながる）と同じ描き方。
+// GitHub Actions のヘッドレスChromeで開き、window.renderRow を呼んで3枚の画像を作る。
+const TW=1080, TH=1440, GW=TW*3;      // 1枚は3:4（プロフィールのグリッドと同じ比率）
+const C={red:"#e82c34",blue:"#1c48c4",purple:"#9a26d9",paper:"#faf8f4",ink:"#19161e"};
+const SEAMS=[TW,TW*2], LINE=230;
+const GAP_MIN=TH*1, GAP_MAX=TH*3;     // 交差の間隔（下限1列・上限3列）
+// 本当の乱数（端末の暗号用乱数）。一度決まった模様は保存して、次の列へ引き継ぐ
+const SLOPE=0.18;                     // ふくらみ＝区間の長さ×0.18
+const rand=()=>crypto.getRandomValues(new Uint32Array(1))[0]/4294967296;
+const CROSS=[];
+const crossPos=()=>800+rand()*(GW-1600);   // 交差する横位置
+// 起点：1列目・真ん中の投稿にある創始者の手（手のひらの裏）から2本の糸が出発する
+const ORIGIN={X:TW*1.5, Y:TH-560};
+function ensureCross(Y){
+  if(!CROSS.length){ CROSS.push(ORIGIN);
+    CROSS.push({X:ORIGIN.X+(rand()-.5)*500, Y:ORIGIN.Y+GAP_MIN+rand()*(GAP_MAX-GAP_MIN), wob:(rand()-.5)*.6}); }
+  while(CROSS[CROSS.length-1].Y<Y+TH){
+    const last=CROSS[CROSS.length-1];
+    CROSS.push({X:crossPos(), Y:last.Y+GAP_MIN+rand()*(GAP_MAX-GAP_MIN), wob:(rand()-.5)});
+  }
+}
+function spanAt(Y){ ensureCross(Y); let lo=0,hi=CROSS.length-1;
+  while(hi-lo>1){ const m=(lo+hi)>>1; if(CROSS[m].Y<=Y) lo=m; else hi=m; } return lo; }
+function threadX(which,Y){
+  if(Y<ORIGIN.Y) return NaN;                     // 起点より下には糸はない
+  const j=spanAt(Y), a=CROSS[j], b=CROSS[j+1], L=b.Y-a.Y, t=(Y-a.Y)/L, s=t*t*(3-2*t);
+  // ふくらみは、線の太さごと3枚の幅（3240px）からはみ出さない大きさまでに抑える
+  const room=Math.min(a.X,b.X,GW-a.X,GW-b.X)-LINE/2-24;
+  const base=a.X+(b.X-a.X)*s, A=Math.max(0,Math.min(SLOPE*L,room/1.25)), sp=Math.sin(Math.PI*t);
+  const off=(A*sp + (b.wob||0)*A*sp*sp*Math.sin(2*Math.PI*t))*(j%2?1:-1);   // 区間ごとに左右を入れ替える＝区切りで必ず交差
+  return which==="red"?base+off:base-off;
+}
+function strokeThread(which,row){
+  const c=document.createElement("canvas"); c.width=GW; c.height=TH; const g=c.getContext("2d");
+  const base=(row-1)*TH; g.beginPath();
+  let started=false;
+  for(let y=-140;y<=TH+140;y+=6){ const Y=base+(TH-y); const x=threadX(which,Y); if(!isFinite(x)) continue;
+    started?g.lineTo(x,y):g.moveTo(x,y); started=true; }
+  g.lineWidth=LINE; g.lineCap="round"; g.lineJoin="round"; g.strokeStyle=which==="red"?C.red:C.blue; g.stroke();
+  return c;
+}
+function drawRowBackground(row){
+  const bg=document.createElement("canvas"); bg.width=GW; bg.height=TH; const g=bg.getContext("2d");
+  g.fillStyle=C.paper; g.fillRect(0,0,GW,TH);
+  const r=strokeThread("red",row), b=strokeThread("blue",row);
+  g.drawImage(r,0,0); g.drawImage(b,0,0);
+  // 赤と青が重なるところは紫
+  const x=document.createElement("canvas"); x.width=GW; x.height=TH; const xg=x.getContext("2d");
+  xg.drawImage(r,0,0); xg.globalCompositeOperation="source-in"; xg.drawImage(b,0,0);
+  xg.globalCompositeOperation="source-in"; xg.fillStyle=C.purple; xg.fillRect(0,0,GW,TH);
+  g.drawImage(x,0,0);
+  invertCircles(g,row);
+  return bg;
+}
+
+/* ---------- ランダムな赤丸・青丸 ----------
+   丸も全体の座標で決めるので、列の境目をまたいでもずれない。
+   丸が糸と重なって白く抜ける部分は、必ず「投稿と投稿の境目」の近くで、手の置き場所の外にくるようにする */
+const BAND=900, MIN_GAP=160, SEAM_NEAR=240;
+// 1枚の中で手が置かれる範囲（左上が0,0）
+const inHand=(lx,ly)=> (ly>360 && ly<1160 && lx>150 && lx<930) || (ly>=1160 && lx>310 && lx<770);
+function tileLocal(X,Y){ const k=Math.floor(Y/TH), col=Math.min(2,Math.max(0,Math.floor(X/TW)));
+  return {lx:X-col*TW, ly:TH-(Y-k*TH)}; }
+const nearSeam=(X,Y)=> SEAMS.some(sx=>Math.abs(X-sx)<SEAM_NEAR) || Math.abs(Y-Math.round(Y/TH)*TH)<SEAM_NEAR;
+function circleOK(c){
+  // 紫の交点は白く抜かない
+  ensureCross(c.Y+c.rad);
+  for(const p of CROSS) if(Math.abs(p.Y-c.Y)<c.rad+LINE*3 && Math.hypot(c.X-p.X,c.Y-p.Y)<c.rad+LINE*1.6) return false;
+  // 丸の中で糸に重なる点を調べる
+  for(let dy=-c.rad;dy<=c.rad;dy+=24) for(let dx=-c.rad;dx<=c.rad;dx+=24){
+    if(dx*dx+dy*dy>c.rad*c.rad) continue;
+    const X=c.X+dx, Y=c.Y+dy;
+    const hit=["red","blue"].some(w=>Math.abs(X-threadX(w,Y))<LINE*0.75);
+    if(!hit) continue;
+    const {lx,ly}=tileLocal(X,Y);
+    if(inHand(lx,ly) || !nearSeam(X,Y)) return false;
+  }
+  return true;
+}
+const CIRCLES=[]; let builtBand=-1;
+function buildBands(K){
+  for(let k=builtBand+1;k<=K;k++){
+    const r=rand, n=1+(r()<0.6?1:0)+(r()<0.25?1:0);
+    for(let i=0;i<n;i++){
+      for(let tries=0;tries<40;tries++){
+        // 半分は縦の境目の上に置き、糸と重なる白抜きが境目に出るようにする
+        const onSeam=r()<0.5, rad=onSeam?70+r()*150:80+r()*340;
+        const X=onSeam?SEAMS[r()<0.5?0:1]+(r()-.5)*120:rad+r()*(GW-2*rad);
+        const c={X, Y:k*BAND+r()*BAND, rad, col:r()<0.5?C.red:C.blue};
+        const spaced=CIRCLES.every(o=>Math.abs(o.Y-c.Y)>o.rad+c.rad+MIN_GAP || Math.hypot(o.X-c.X,o.Y-c.Y)>=o.rad+c.rad+MIN_GAP);
+        if(spaced && circleOK(c)){ CIRCLES.push(c); break; }
+      }
+    }
+  }
+  builtBand=Math.max(builtBand,K);
+}
+function circlesNear(base){
+  buildBands(Math.floor((base+TH+460)/BAND)+1);
+  return CIRCLES.filter(c=>c.Y+c.rad>base-4 && c.Y-c.rad<base+TH+4);
+}
+const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+function invertCircles(g,row){
+  const base=(row-1)*TH, P=hex(C.paper);
+  for(const c of circlesNear(base)){
+    const cx=c.X, cy=TH-(c.Y-base), R=c.rad, col=hex(c.col);
+    const x0=Math.max(0,Math.floor(cx-R-1)), x1=Math.min(GW,Math.ceil(cx+R+1)), y0=Math.max(0,Math.floor(cy-R-1)), y1=Math.min(TH,Math.ceil(cy+R+1));
+    if(x1<=x0||y1<=y0) continue;
+    const id=g.getImageData(x0,y0,x1-x0,y1-y0), d=id.data, w=x1-x0;
+    for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++){
+      const a=Math.min(1,Math.max(0,R-Math.hypot(x+.5-cx,y+.5-cy)+.5)); if(!a) continue;
+      const i=((y-y0)*w+(x-x0))*4;
+      const colored=Math.abs(d[i]-P[0])+Math.abs(d[i+1]-P[1])+Math.abs(d[i+2]-P[2])>60;
+      // 重なった所は白抜き。何もない所は丸の色
+      const t=colored?P:col;
+      for(let k=0;k<3;k++) d[i+k]=d[i+k]*(1-a)+t[k]*a;
+    }
+    g.putImageData(id,x0,y0);
+  }
+}
+
+/* ---------- 手に白いふち ---------- */
+function withRim(img,r){
+  const c=document.createElement("canvas"); c.width=img.width+r*2; c.height=img.height+r*2; const g=c.getContext("2d");
+  // 太いふちでも形がギザギザにならないよう、半径を変えながら細かい角度で重ねる
+  for(const k of [1,0.66,0.33]) for(let a=0;a<360;a+=8) g.drawImage(img,r+Math.cos(a*Math.PI/180)*r*k,r+Math.sin(a*Math.PI/180)*r*k);
+  g.globalCompositeOperation="source-in"; g.fillStyle=C.paper; g.fillRect(0,0,c.width,c.height);
+  g.globalCompositeOperation="source-over"; g.drawImage(img,r,r); return c;
+}
+
+
+function loadImg(src){ return new Promise((ok,ng)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ng; i.src=src; }); }
+
+// row：何列目か（1が最初）／pattern：これまでの柄（なければ新しく作る）
+// hands：左・真ん中・右の手 {src, no}（なければ null）。1列目は真ん中だけ（創始者の手・番号なし）
+window.renderRow=async ({row, pattern, hands})=>{
+  if(pattern){ CROSS.splice(0,CROSS.length,...pattern.cross.map(o=>({...o})));
+    CIRCLES.splice(0,CIRCLES.length,...pattern.circles.map(o=>({...o}))); builtBand=pattern.builtBand; }
+  try{ await document.fonts.load('700 30px "Noto Sans JP"','No.0123456789'); }catch{}
+  const imgs=await Promise.all(hands.map(h=>h?loadImg(h.src):null));
+  const bg=drawRowBackground(row), first=row===1;
+  const tiles=[0,1,2].map(i=>{
+    const c=document.createElement("canvas"); c.width=TW; c.height=TH; const g=c.getContext("2d");
+    g.drawImage(bg,-i*TW,0);
+    const img=imgs[i];
+    if(img && !(first && i!==1)){ const rim=withRim(img,Math.round(img.width*0.035)+6);
+      const sc=Math.min(760/rim.width,1060/rim.height), w=rim.width*sc, h=rim.height*sc;
+      g.drawImage(rim,(TW-w)/2,TH-h+Math.round(h*0.04),w,h); }
+    if(!first){ const lab="No."+String(hands[i]?.no||0).padStart(3,"0"); g.font='700 30px "Noto Sans JP",sans-serif'; g.textBaseline="top";
+      const lw=g.measureText(lab).width; g.fillStyle=C.paper; g.fillRect((TW-lw)/2-16,48,lw+32,48);
+      g.fillStyle=C.ink; g.textAlign="center"; g.fillText(lab,TW/2,56); g.textAlign="left"; }
+    const id=g.getImageData(0,0,TW,TH),a=id.data; for(let p=0;p<a.length;p+=4){const n=1-Math.random()*.03;a[p]*=n;a[p+1]*=n;a[p+2]*=n;} g.putImageData(id,0,0);
+    return c.toDataURL("image/jpeg",0.9);
+  });
+  return {tiles, pattern:{cross:CROSS.map(o=>({...o})), circles:CIRCLES.map(o=>({...o})), builtBand}};
+};
+window.ready=true;
+</script>
+</body></html>

@@ -1,0 +1,32 @@
+# フィードの自動投稿：15分ごとに、使ってよい手が1列ぶん（3人分）たまっているかを見て、たまっていれば投稿する
+# 必要なもの：リポジトリの Settings → Secrets and variables → Actions に SUPABASE_SECRET_KEY（Supabase のサーバー用の鍵）
+name: feed
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: feed
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: https://axwbndpdzlajvpqnegde.supabase.co
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - id: check
+        run: node tools/feed/check.mjs
+      - if: steps.check.outputs.need == 'true'
+        run: |
+          npm install --no-save --no-package-lock @supabase/supabase-js@2.45.4 playwright@1.48.2
+          npx playwright install --with-deps chromium
+      - if: steps.check.outputs.need == 'true'
+        run: node tools/feed/run.mjs
