@@ -347,6 +347,9 @@ begin
 end $$;
 revoke all on function public.claim_story(bigint, boolean) from public, anon, authenticated;
 grant execute on function public.claim_story(bigint, boolean) to service_role;
+-- 投稿のプログラム（Edge Function）が、管理者の確認と投稿結果の記録に使う
+grant select on admins to service_role;
+grant select, update on submissions to service_role;
 
 -- 「載せる」が記録されたら、Edge Function に合図を送る（中身は送らない。Edge Function がデータベースを見て判断する）
 -- ※ 自分で動かす時は、URL を自分のプロジェクトのものに書き換えてください
