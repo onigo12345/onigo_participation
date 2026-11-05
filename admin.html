@@ -407,8 +407,8 @@ function qrPoster(q, arrive, F, C) {
   const bandTop = h - 250, top = 110 + fs * 2.12 + 20, size = Math.min(660, bandTop - 36 - top);
   g.fillStyle = band; g.fillRect(0, bandTop, 1000, h - bandTop);
   g.fillStyle = C.paper; g.textAlign = "center";
-  g.font = F(900, 46); g.fillText(arrive ? "来たら読み込んで、手をかざしてね！" : "帰る前に、もう一度読み込んでね！", 500, bandTop + 40);
-  g.font = F(700, 28); g.fillText(arrive ? "@onigo12345　立命館OIC 岩倉公園" : "今日あそんだ時間がわかるよ　@onigo12345", 500, bandTop + 118);
+  g.font = F(900, 46); g.fillText(arrive ? "参加する時に、読み込んでね！" : "帰る前に、もう一度読み込んでね！", 500, bandTop + 40);
+  g.font = F(700, 28); g.fillText("@onigo12345　立命館OIC 岩倉公園", 500, bandTop + 118);
   g.globalAlpha = .85; g.font = F(500, 20); g.fillText("大学非公認の学生有志サークル", 500, bandTop + 176); g.globalAlpha = 1;
   // QRは画素ぴったりに描く（にじまないように）
   g.setTransform(1, 0, 0, 1, 0, 0);
