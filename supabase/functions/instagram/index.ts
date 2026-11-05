@@ -13,7 +13,16 @@ const IG_USER = Deno.env.get("IG_USER_ID") || "17841421970707110";   // @onigo12
 const TOKEN = Deno.env.get("IG_TOKEN") || "";
 const BUCKET = "hands";
 
-const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+// サーバー用の鍵（Supabase が自動で渡してくれる。新しい形式の鍵があればそちらを使う）
+function serverKey() {
+  try {
+    const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}");
+    const k = keys.default || Object.values(keys)[0];
+    if (k) return String(k);
+  } catch { /* 古い形式だけのプロジェクト */ }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+}
+const db = createClient(Deno.env.get("SUPABASE_URL")!, serverKey(), {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 const CORS = {
