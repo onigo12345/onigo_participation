@@ -50,6 +50,23 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
 .status{font-size:.88rem;min-height:1.3em}
 .status.err{color:var(--red)}
 .empty{border:2px dashed var(--line);padding:30px;text-align:center;color:var(--muted)}
+h2{margin:0 0 8px;font-size:1.05rem;font-weight:900}
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--ink)}
+.tabs button{font:inherit;font-weight:700;padding:10px 16px;border:0;background:transparent;cursor:pointer;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--ink);color:#fff}
+.tablewrap{overflow-x:auto;background:#fff;border:1px solid var(--line)}
+table{border-collapse:collapse;width:100%;font-size:.82rem;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:#f3f1ed;font-weight:700}
+td.n,th.n{text-align:right}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+.barrow{display:grid;grid-template-columns:9em 1fr 2.5em;gap:8px;align-items:center;font-size:.8rem;margin:3px 0}
+.barrow i{display:block;height:12px;background:var(--blue)}
+.barrow .n{text-align:right;font-variant-numeric:tabular-nums}
+.qrform{max-width:460px;background:#fff;border:1px solid var(--line);padding:16px;display:grid;gap:12px}
+.qrshow{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.qrshow figure{margin:0;display:grid;gap:8px;justify-items:start}
+.qrshow canvas{width:260px;max-width:100%;height:auto;border:1px solid var(--line)}
 .hint{font-size:.8rem;color:var(--muted);line-height:1.7;margin:0}
 </style>
 </head>
@@ -68,6 +85,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
   </form>
 
   <section id="main" hidden style="display:grid;gap:18px">
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="images" aria-selected="true">画像</button>
+      <button type="button" role="tab" data-tab="data" aria-selected="false">来場データ</button>
+      <button type="button" role="tab" data-tab="qr" aria-selected="false">QRをつくる</button>
+    </nav>
+    <div id="tab-images" style="display:grid;gap:18px">
     <div class="bar">
       <div class="stats">
         <div class="stat"><b id="sPeople">–</b><span>参加者（番号を発行した数）</span></div>
@@ -89,11 +112,43 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-o
     <p class="hint">1人につき、最後に作った画像（本人が選んだ見え方）を表示しています。左が手の素材（公式投稿メーカーに入れるもの）、右がストーリー画像です。「掲載をやめる」は、その番号の画像と記録をすべて削除します（元に戻せません）。</p>
     <div class="status" id="status" role="status"></div>
     <div class="grid" id="grid"></div>
+    </div>
+
+    <!-- 来場データ -->
+    <div id="tab-data" hidden style="display:grid;gap:22px">
+      <div class="bar">
+        <div class="stats" id="dStats"></div>
+        <div class="tools"><button class="btn ghost" id="csv" type="button">来場データをCSVで保存</button><button class="btn ghost" id="reload2" type="button">更新</button></div>
+      </div>
+      <div><h2>開催ごとの記録</h2><p class="hint">同じ日に同じQRから来た人を「1回の開催」としてまとめています。帰る時のQRを読まなかった人は、滞在時間の計算から外しています。</p>
+        <div class="tablewrap"><table id="events"></table></div></div>
+      <div class="cols">
+        <div><h2>学部</h2><div id="byFaculty"></div></div>
+        <div><h2>回生</h2><div id="byGrade"></div></div>
+        <div><h2>知ったきっかけ</h2><div id="byHeard"></div></div>
+        <div><h2>来た時間帯</h2><div id="byHour"></div></div>
+      </div>
+      <div><h2>QRの設置者ごと</h2><div class="tablewrap"><table id="byPlacer"></table></div></div>
+    </div>
+
+    <!-- QRをつくる -->
+    <div id="tab-qr" hidden style="display:grid;gap:22px">
+      <form class="qrform" id="qrForm">
+        <h2>新しいQRの組をつくる</h2>
+        <p class="hint">QRを設置する人（常連メンバーなど）ごとに、「来た時」と「帰る時」の2枚1組のQRを作ります。QRの中身は短い合言葉だけで、設置者の名前はURLに出ません。来場データの「設置者」欄に、ここで付けた名前が表示されます。</p>
+        <label>設置する人の呼び名 <input id="placer" maxlength="20" required placeholder="例：たっくん"></label>
+        <label>メモ（任意） <input id="placerNote" maxlength="40" placeholder="例：火曜担当"></label>
+        <button class="btn blue" type="submit">QRをつくる</button>
+      </form>
+      <div id="qrShow" hidden class="qrshow"></div>
+      <div><h2>これまでに作ったQR</h2><div class="tablewrap"><table id="spotList"></table></div></div>
+    </div>
   </section>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script src="config.js"></script>
 <script>
 const CFG=window.APP_CONFIG||{}, BUCKET=CFG.BUCKET||"hands";
@@ -118,6 +173,7 @@ $("login").addEventListener("submit",async e=>{
 });
 $("logout").addEventListener("click",async()=>{ await sb.auth.signOut(); location.reload(); });
 $("reload").addEventListener("click",load);
+$("reload2").addEventListener("click",()=>loadData(true));
 $("filter").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; view=b.dataset.v;
   document.querySelectorAll("#filter button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render(); });
 
@@ -205,6 +261,156 @@ async function removeNumber(no){
   const dl=await sb.from("submissions").delete().eq("participant_no",no);
   if(dl.error){ say("記録を削除できませんでした（"+dl.error.message+"）",true); return; }
   say(`No.${pad(no)} の画像と記録を削除しました。`); load();
+}
+</script>
+
+<script>
+/* ---------- タブ ---------- */
+document.querySelector(".tabs").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  for(const t of ["images","data","qr"]) $("tab-"+t).hidden = t!==b.dataset.tab;
+  if(b.dataset.tab==="data") loadData(); if(b.dataset.tab==="qr") loadSpots();
+});
+
+/* ---------- 来場データ ---------- */
+const TZ={timeZone:"Asia/Tokyo"};
+const hm=t=>t?new Date(t).toLocaleTimeString("ja-JP",{...TZ,hour:"2-digit",minute:"2-digit"}):"–";
+const wd=d=>"日月火水木金土"[new Date(d+"T12:00:00+09:00").getDay()];
+const mins=v=>v.arrived_at&&v.left_at?Math.max(0,(new Date(v.left_at)-new Date(v.arrived_at))/60000):null;
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+const fmtMin=m=>m==null?"–":m>=60?`${Math.floor(m/60)}時間${Math.round(m%60)}分`:`${Math.round(m)}分`;
+let D=null;
+async function fetchAll(table,select,order){
+  const out=[]; for(let from=0;;from+=1000){
+    const {data,error}=await sb.from(table).select(select).order(order).range(from,from+999);
+    if(error) throw error; out.push(...data); if(data.length<1000) return out; }
+}
+async function loadData(force){
+  if(D&&!force){ renderData(); return; }
+  say("来場データを読み込み中…");
+  try{
+    const [visits,people,spots]=await Promise.all([
+      fetchAll("visits","*","id"),
+      fetchAll("participants","id,faculty,grade,nickname,heard_from,created_at","id"),
+      fetchAll("spots","*","created_at")]);
+    D={visits,people,spots}; say(""); renderData();
+  }catch(e){ say("来場データを読み込めませんでした（"+(e.message||e)+"）。supabase.sql を最新版で実行し直してください。",true); }
+}
+function renderData(){
+  const {visits,people,spots}=D, P=new Map(people.map(p=>[p.id,p])), S=new Map(spots.map(s=>[s.token,s.placer]));
+  const firstDay=new Map(); for(const v of visits){ const f=firstDay.get(v.participant_no); if(!f||v.visit_date<f) firstDay.set(v.participant_no,v.visit_date); }
+  const perPerson=new Map(); for(const v of visits) perPerson.set(v.participant_no,(perPerson.get(v.participant_no)||0)+1);
+  const visitors=[...perPerson.keys()], repeaters=visitors.filter(id=>perPerson.get(id)>=2);
+  const stays=visits.map(mins).filter(m=>m!=null&&m<12*60);
+  const answered=people.filter(p=>p.nickname).length;
+  $("dStats").innerHTML=[
+    [visits.length,"延べ来場"],[visitors.length,"来た人"],
+    [visitors.length?Math.round(repeaters.length/visitors.length*100)+"%":"–","リピート率（2回以上来た人）"],
+    [fmtMin(avg(stays)),"平均の滞在時間"],
+    [people.length?Math.round(answered/people.length*100)+"%":"–","アンケート回答率"],
+    [visits.length?Math.round(visits.filter(v=>v.left_at).length/visits.length*100)+"%":"–","帰る時のQRを読んだ割合"],
+  ].map(([b,s])=>`<div class="stat"><b>${b}</b><span>${s}</span></div>`).join("");
+
+  // 開催ごと（同じ日 × 同じQR）
+  const ev=new Map();
+  for(const v of visits){ const k=v.visit_date+"|"+(v.spot||""); if(!ev.has(k)) ev.set(k,[]); ev.get(k).push(v); }
+  const rows=[...ev.entries()].sort((a,b)=>a[0]<b[0]?1:-1).map(([k,vs])=>{
+    const [date,spot]=k.split("|");
+    const arr=vs.map(v=>v.arrived_at).filter(Boolean).sort(), lef=vs.map(v=>v.left_at).filter(Boolean).sort();
+    const end=lef.at(-1)||null;
+    // 同時にいた人数の最大（帰る時のQRを読まなかった人は、その日の最後の帰り時刻までいたとみなす）
+    const evs=[]; for(const v of vs){ if(!v.arrived_at) continue; const e2=v.left_at||end||new Date(new Date(v.arrived_at).getTime()+3600e3).toISOString();
+      evs.push([v.arrived_at,1],[e2,-1]); }
+    evs.sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:a[1]-b[1]); let cur=0,peak=0; for(const [,d] of evs){ cur+=d; peak=Math.max(peak,cur); }
+    const fe=vs.map(v=>v.feeling).filter(Boolean);
+    return `<tr><td>${date}（${wd(date)}）</td><td>${spot?(S.get(spot)||"不明なQR"):"QRの情報なし"}</td>
+      <td class="n">${vs.length}</td><td class="n">${vs.filter(v=>firstDay.get(v.participant_no)===date).length}</td>
+      <td>${hm(arr[0])}</td><td>${hm(end)}</td><td class="n">${fmtMin(avg(vs.map(mins).filter(m=>m!=null&&m<720)))}</td>
+      <td class="n">${peak||"–"}</td><td class="n">${vs.filter(v=>v.made_image).length}</td><td class="n">${vs.filter(v=>v.shared).length}</td>
+      <td class="n">${fe.length?avg(fe).toFixed(1):"–"}</td></tr>`;
+  });
+  $("events").innerHTML=`<tr><th>日付</th><th>設置者</th><th class="n">来場</th><th class="n">うち初参加</th><th>最初に来た</th><th>最後に帰った</th><th class="n">平均滞在</th><th class="n">最大同時</th><th class="n">画像</th><th class="n">シェア</th><th class="n">楽しさ(1-3)</th></tr>`+(rows.join("")||`<tr><td colspan="11">まだ来場の記録がありません。</td></tr>`);
+
+  const bars=(el,pairs)=>{ const max=Math.max(1,...pairs.map(p=>p[1]));
+    $(el).innerHTML=pairs.length?pairs.map(([k,n])=>`<div class="barrow"><span>${k}</span><i style="width:${n/max*100}%"></i><span class="n">${n}</span></div>`).join(""):'<p class="hint">まだデータがありません。</p>'; };
+  const count=(arr)=>{ const m=new Map(); for(const x of arr) m.set(x,(m.get(x)||0)+1); return [...m.entries()].sort((a,b)=>b[1]-a[1]); };
+  const came=visitors.map(id=>P.get(id)).filter(Boolean);
+  bars("byFaculty",count(came.map(p=>p.faculty||"未回答")));
+  bars("byGrade",count(came.map(p=>p.grade||"未回答")));
+  bars("byHeard",count(came.map(p=>p.heard_from||"未回答")));
+  const hours=new Map(); for(const v of visits) if(v.arrived_at){ const h=+new Date(v.arrived_at).toLocaleString("en-US",{...TZ,hour:"2-digit",hour12:false}); hours.set(h,(hours.get(h)||0)+1); }
+  bars("byHour",[...hours.entries()].sort((a,b)=>a[0]-b[0]).map(([h,n])=>[h+"時台",n]));
+
+  // 設置者ごと
+  const pl=new Map();
+  for(const [k,vs] of ev){ const spot=k.split("|")[1]; const name=spot?(S.get(spot)||"不明なQR"):"QRの情報なし";
+    const r=pl.get(name)||{events:0,visits:0,first:0}; r.events++; r.visits+=vs.length; r.first+=vs.filter(v=>firstDay.get(v.participant_no)===k.split("|")[0]).length; pl.set(name,r); }
+  $("byPlacer").innerHTML=`<tr><th>設置者</th><th class="n">開催した回数</th><th class="n">延べ来場</th><th class="n">初参加の人を呼んだ数</th></tr>`+
+    ([...pl.entries()].sort((a,b)=>b[1].events-a[1].events).map(([n,r])=>`<tr><td>${n}</td><td class="n">${r.events}</td><td class="n">${r.visits}</td><td class="n">${r.first}</td></tr>`).join("")||`<tr><td colspan="4">まだ記録がありません。</td></tr>`);
+}
+$("csv").addEventListener("click",()=>{
+  if(!D) return; const P=new Map(D.people.map(p=>[p.id,p])), S=new Map(D.spots.map(s=>[s.token,s.placer]));
+  const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const head=["日付","参加番号","ニックネーム","学部","回生","知ったきっかけ","設置者","来た時刻","帰った時刻","滞在(分)","画像","シェア","楽しさ"];
+  const lines=D.visits.map(v=>{ const p=P.get(v.participant_no)||{}; const m=mins(v);
+    return [v.visit_date,v.participant_no,p.nickname,p.faculty,p.grade,p.heard_from,v.spot?S.get(v.spot):"",hm(v.arrived_at),hm(v.left_at),m==null?"":Math.round(m),v.made_image?1:0,v.shared?1:0,v.feeling??""].map(q).join(","); });
+  saveBlob(new Blob(["﻿"+[head.map(q).join(","),...lines].join("\r\n")],{type:"text/csv"}),`visits_${new Date().toISOString().slice(0,10)}.csv`);
+});
+
+/* ---------- QRをつくる ---------- */
+const BASE=new URL("./",location.href).href;
+async function loadSpots(){
+  const {data,error}=await sb.from("spots").select("*").order("created_at",{ascending:false});
+  if(error){ say("QRの一覧を読み込めませんでした（"+error.message+"）",true); return; }
+  $("spotList").innerHTML=`<tr><th>設置者</th><th>メモ</th><th>作った日</th><th>状態</th><th></th></tr>`+(data.map(s=>`<tr>
+    <td>${esc(s.placer)}</td><td>${esc(s.note||"")}</td><td>${new Date(s.created_at).toLocaleDateString("ja-JP",TZ)}</td>
+    <td>${s.active?"使える":"止めている"}</td>
+    <td><button class="btn ghost" data-show="${s.token}" data-name="${esc(s.placer)}" type="button">QRを表示</button>
+        <button class="btn ghost" data-toggle="${s.token}" data-active="${s.active}" type="button">${s.active?"止める":"再開する"}</button></td></tr>`).join("")||`<tr><td colspan="5">まだありません。</td></tr>`);
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+$("spotList").addEventListener("click",async e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  if(b.dataset.show) showQR(b.dataset.show,b.dataset.name);
+  if(b.dataset.toggle){ const {error}=await sb.from("spots").update({active:b.dataset.active!=="true"}).eq("token",b.dataset.toggle);
+    if(error) say("変更できませんでした（"+error.message+"）",true); else loadSpots(); }
+});
+$("qrForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const a="abcdefghijkmnpqrstuvwxyz23456789", r=crypto.getRandomValues(new Uint8Array(10));
+  const token=[...r].map(x=>a[x%a.length]).join("");
+  const {error}=await sb.from("spots").insert({token,placer:$("placer").value.trim(),note:$("placerNote").value.trim()||null});
+  if(error){ say("作れませんでした（"+error.message+"）",true); return; }
+  showQR(token,$("placer").value.trim()); $("qrForm").reset(); loadSpots();
+});
+function qrCard(url,kind){
+  const q=qrcode(0,"H"); q.addData(url); q.make(); const n=q.getModuleCount();
+  const W=1080,H=1350,c=document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
+  const arrive=kind==="arrive", band=arrive?"#e82c34":"#1c48c4";
+  g.fillStyle="#faf8f4"; g.fillRect(0,0,W,H);
+  g.fillStyle="#19161e"; g.font='700 26px "Noto Sans JP",sans-serif'; g.textBaseline="top"; g.fillText("RITSUMEIKAN OIC  ONIGOKKO CIRCLE",60,60);
+  g.fillStyle=band; g.font='900 140px "Noto Sans JP",sans-serif'; g.fillText(arrive?"つかまえた。":"またね。",60,110);
+  const size=700, cell=Math.floor(size/(n+4)), off=(W-cell*(n+4))/2;
+  g.fillStyle="#faf8f4"; g.fillRect(off,330,cell*(n+4),cell*(n+4)); g.fillStyle="#19161e";
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++) if(q.isDark(y,x)) g.fillRect(off+(x+2)*cell,330+(y+2)*cell,cell,cell);
+  g.fillStyle=band; g.fillRect(0,1080,W,H-1080);
+  g.fillStyle="#faf8f4"; g.textAlign="center";
+  g.font='900 52px "Noto Sans JP",sans-serif'; g.fillText(arrive?"来たら読み込んで、手をかざしてね！":"帰る前に、もう一度読み込んでね！",W/2,1120);
+  g.font='700 30px "Noto Sans JP",sans-serif'; g.fillText(arrive?"@onigo12345　立命館OIC 岩倉公園":"今日あそんだ時間がわかるよ　@onigo12345",W/2,1230);
+  return c;
+}
+async function showQR(token,name){
+  try{ await document.fonts.load('900 140px "Noto Sans JP"'); }catch{}
+  const box=$("qrShow"); box.hidden=false; box.innerHTML="";
+  for(const [kind,label,url] of [["arrive","来た時のQR",BASE+"?k="+token],["leave","帰る時のQR",BASE+"bye.html?k="+token]]){
+    const c=qrCard(url,kind), f=document.createElement("figure");
+    const cap=document.createElement("figcaption"); cap.innerHTML=`<b>${esc(name)}</b>さんの${label}<br><small>${url}</small>`;
+    const b=document.createElement("button"); b.className="btn blue"; b.type="button"; b.textContent="画像で保存";
+    b.onclick=()=>c.toBlob(bl=>saveBlob(bl,`qr_${kind}_${name}.png`));
+    f.append(c,cap,b); box.append(f);
+  }
+  box.scrollIntoView({behavior:"smooth",block:"start"});
 }
 </script>
 </body>

@@ -40,32 +40,46 @@ function showCamMessage(text, label, onClick) {
 window.addEventListener("error", (e) => toast("エラー：" + (e.message || "不明"), 6000));
 window.addEventListener("unhandledrejection", (e) => toast("エラー：" + (e.reason?.message || e.reason || "不明"), 6000));
 
-/* ---------- 1. 参加番号（同じスマホは何度開いても同じ番号） ---------- */
-// 通信に失敗した時は番号を決めずに、次の操作でもう一度取りにいく（仮の番号を端末に残さない）
-let numberPromise = null;
+/* ---------- 1. 来場の記録と参加番号（同じスマホは何度開いても同じ番号） ---------- */
+// 来た時のQRを開くと、その日の来場（時刻・どのQRから来たか）を記録する。通信に失敗したら、撮影の時にもう一度
+let joinPromise = null, hasProfile = false;
 function getNumber() {
-  if (!numberPromise) numberPromise = assignNumber().catch((e) => { numberPromise = null; throw e; });
-  return numberPromise;
-}
-async function assignNumber() {
-  const saved = ls.get("onigokko_no");
-  if (saved && +saved > 0) return +saved;
-  if (!sb) { // お試しモード：この端末の中だけで数える
-    const n = (+ls.get("onigokko_demo_counter") || 0) + 1;
-    ls.set("onigokko_demo_counter", n); ls.set("onigokko_no", n); return n;
-  }
-  for (let i = 0; i < 3; i++) {
-    const { data, error } = await sb.from("participants").insert({ source: "qr" }).select("id").single();
-    if (!error && data) { ls.set("onigokko_no", data.id); return data.id; }
-    console.warn("count failed", error); await sleep(800 * (i + 1));
-  }
-  throw new Error("count");
+  if (!joinPromise) joinPromise = (async () => {
+    for (let i = 0; i < 3; i++) {
+      try { const r = await window.Visit.join(); hasProfile = !!r.has_profile; return r; }
+      catch (e) { console.warn("join failed", e); await sleep(800 * (i + 1)); }
+    }
+    throw new Error("count");
+  })().catch((e) => { joinPromise = null; throw e; });
+  return joinPromise.then((r) => r.no);
 }
 function showNumber() {
-  getNumber().then((n) => { myNo = n; $("countNum").textContent = n; })
+  getNumber().then((n) => { myNo = n; $("countNum").textContent = n; return joinPromise; })
+    .then((r) => {   // 2回目以降の人には「おかえり」
+      if (r.visits > 1) { $("welcomeTitle").innerHTML = "おかえり！<br>今日も来てくれて<br>ありがとう！"; $("visitNote").textContent = `今日で${r.visits}回目の参加です`; $("visitNote").hidden = false; }
+    })
     .catch(() => { $("countNum").textContent = "?"; toast("参加番号を取得できませんでした。電波の良い場所で開き直してね。", 4000); });
 }
 showNumber();
+
+/* ---------- アンケート（初めての人だけ・1画面） ---------- */
+async function goNext() {
+  try { await withTimeout(joinPromise || getNumber(), 8000); } catch {}
+  if (hasProfile) startCamera(); else show("s-survey");
+}
+$("survey").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const nick = $("nickname").value.trim();
+  if (!$("faculty").value) { toast("学部を選んでね"); return; }
+  if (!nick) { toast("ニックネームを入れてね"); return; }
+  const btn = $("surveyGo"); btn.disabled = true;
+  try {
+    await window.Visit.saveProfile({ faculty: $("faculty").value, grade: $("grade").value, nickname: nick.slice(0, 20), heard: $("heard").value });
+    hasProfile = true; startCamera();
+  } catch (err) { console.warn(err); toast("送れませんでした。電波の良い場所でもう一度押してね。", 3500); }
+  finally { btn.disabled = false; }
+});
+$("surveySkip").addEventListener("click", startCamera);
 
 /* ---------- 手の検出モデル（裏で先に読み込む。失敗したら次の撮影でもう一度） ---------- */
 const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
@@ -104,7 +118,7 @@ function loadFonts() {
 loadFonts();
 
 /* ---------- 2. カメラ ---------- */
-$("toCamera").addEventListener("click", startCamera);
+$("toCamera").addEventListener("click", goNext);
 $("back").addEventListener("click", () => { stopCamera(); show("s-welcome"); });
 $("flip").addEventListener("click", () => { facing = facing === "environment" ? "user" : "environment"; startCamera(); });
 $("retake").addEventListener("click", () => { flushUpload(); startCamera(); });
@@ -275,6 +289,7 @@ async function generate(photo) {
     await renderResult();
     show("s-result");
     markChanged();
+    window.Visit.mark("image");
   } catch (e) {
     console.warn(e);
     show("s-camera");
@@ -555,7 +570,7 @@ $("share").addEventListener("click", async () => {
   const file = new File([lastBlob], `onigokko_${pad(myNo)}.jpg`, { type: "image/jpeg" });
   const text = `鬼ごっこサークルの${myNo}人目のおともだちになりました！ つぎは君も、このゆびとーまれ！ ${CFG.INSTAGRAM || ""} #立命館 #OIC #鬼ごっこサークル`;
   if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], text }); } catch (e) { if (e.name !== "AbortError") toast("シェアできませんでした。画像を保存してから投稿してね。"); }
+    try { await navigator.share({ files: [file], text }); window.Visit.mark("shared"); } catch (e) { if (e.name !== "AbortError") toast("シェアできませんでした。画像を保存してから投稿してね。"); }
   } else {
     toast("この端末では直接シェアできません。画像を長押しで保存してから投稿してね。", 3600);
   }

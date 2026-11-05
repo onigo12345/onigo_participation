@@ -72,6 +72,19 @@ html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-fam
 .camnote{display:block;margin-top:6px;color:var(--red);font-weight:700}
 .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
 label.btn{display:block;cursor:pointer}
+.visit-note{margin:0;font-weight:900;color:var(--blue)}
+#s-survey{overflow-y:auto;gap:12px}
+#s-survey>*{flex-shrink:0}
+.survey{display:grid;gap:14px;max-width:440px;width:100%;margin:0 auto}
+.survey h2{margin:0;font-size:1.5rem;font-weight:900;color:var(--red)}
+.survey label{display:grid;gap:6px;font-weight:700;font-size:.92rem}
+.survey select,.survey input{font:inherit;font-size:16px;padding:12px;border:2px solid var(--ink);background:#fff;color:var(--ink);border-radius:0;width:100%;-webkit-appearance:none;appearance:none}
+.survey small{font-weight:500;color:var(--muted);font-size:.76rem}
+.survey .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.req,.opt{justify-self:start}
+.req{font-size:.68rem;background:var(--red);color:#fff;padding:1px 6px;margin-left:4px}
+.opt{font-size:.68rem;border:1px solid var(--muted);color:var(--muted);padding:0 5px;margin-left:4px}
+.privacy{font-size:.74rem;color:var(--muted);line-height:1.65;margin:0}
 .note{font-size:.8rem;color:var(--muted);text-align:center;line-height:1.6;margin:0}
 
 /* 同意ポップアップ */
@@ -96,22 +109,63 @@ label.btn{display:block;cursor:pointer}
   </svg>
   <div class="eyebrow">RITSUMEIKAN OIC&nbsp; ONIGOKKO CIRCLE</div>
   <div class="welcome-body">
-    <h1>鬼ごっこサークルに<br>参加してくれて<br>ありがとう！</h1>
+    <h1 id="welcomeTitle">鬼ごっこサークルに<br>参加してくれて<br>ありがとう！</h1>
     <div class="count">
       <span class="label">あなたは</span>
       <span class="num"><span id="countNum">…</span><small>人目</small></span>
       <span class="label">の参加者です！</span>
     </div>
     <p class="thanks">きてくれてありがとう！</p>
+    <p class="visit-note" id="visitNote" hidden></p>
   </div>
   <div class="welcome-foot">
     <div class="notice" role="note">
       <b>ご注意</b>
-      撮影した手の画像は、鬼ごっこサークル公式Instagram（@onigo12345）などの広報に使わせていただくことがあります。写るのは手だけで、名前は載せません。手をそのまま見せたくない人は、撮影のあとで「ふんわり」「強くぼかす」を選べます。掲載をやめてほしい時は、DMでご連絡ください。
+      撮影した手の画像は、鬼ごっこサークル公式Instagram（@onigo12345）などの広報に使わせていただくことがあります。写るのは手だけで、名前は載せません。また、来た時刻・帰った時刻と、初回の簡単なアンケートをサークル運営の参考にします。手をそのまま見せたくない人は、撮影のあとで「ふんわり」「強くぼかす」を選べます。掲載をやめてほしい時は、DMでご連絡ください。
       <span class="camnote">※検索アプリ（Google・Yahoo!など）やブラウザアプリの設定によっては、カメラが起動しないことがあります。その時はSafariやChromeで開いてください。</span>
     </div>
     <button class="btn" id="toCamera" type="button">同意して、手を撮影する</button>
   </div>
+</section>
+
+<!-- 1.5 アンケート（初めての人だけ） -->
+<section id="s-survey" class="screen" hidden>
+  <div class="eyebrow">はじめての人だけ・10秒</div>
+  <form id="survey" class="survey" novalidate>
+    <h2>ちょっとだけ教えて！</h2>
+    <label>学部 <span class="req">必須</span>
+      <select id="faculty" required>
+        <option value="">選んでください</option>
+        <optgroup label="OIC">
+          <option>映像学部</option><option>経営学部</option><option>政策科学部</option><option>総合心理学部</option>
+          <option>情報理工学部</option><option>グローバル教養学部</option>
+        </optgroup>
+        <optgroup label="衣笠・BKC">
+          <option>法学部</option><option>産業社会学部</option><option>国際関係学部</option><option>文学部</option>
+          <option>デザイン・アート学部</option><option>経済学部</option><option>スポーツ健康科学部</option>
+          <option>食マネジメント学部</option><option>理工学部</option><option>生命科学部</option><option>薬学部</option>
+        </optgroup>
+        <optgroup label="そのほか">
+          <option>大学院</option><option>ほかの大学</option><option>社会人・その他</option>
+        </optgroup>
+      </select>
+    </label>
+    <label>ニックネーム <span class="req">必須</span>
+      <input id="nickname" maxlength="20" autocomplete="off" placeholder="例：たっくん（本名はNG）">
+      <small>本名は入れないでね。サークルの中で呼ばれたい名前でOK</small>
+    </label>
+    <div class="row2">
+      <label>回生 <span class="opt">任意</span>
+        <select id="grade"><option value="">—</option><option>1回生</option><option>2回生</option><option>3回生</option><option>4回生</option><option>院生</option><option>その他</option></select>
+      </label>
+      <label>何で知った？ <span class="opt">任意</span>
+        <select id="heard"><option value="">—</option><option>Instagram</option><option>友達のストーリー</option><option>友達に誘われた</option><option>公園で見かけた</option><option>その他</option></select>
+      </label>
+    </div>
+    <p class="privacy">集めるのは、学部・ニックネーム・回生・知ったきっかけと、来た時刻・帰った時刻だけです。サークルの運営と、もっと遊びやすくするための参考に使い、外には公開しません。</p>
+    <button class="btn" id="surveyGo" type="submit">手を撮影する</button>
+    <button class="btn ghost" id="surveySkip" type="button">あとで答える</button>
+  </form>
 </section>
 
 <!-- 2. カメラ -->
@@ -161,6 +215,7 @@ label.btn{display:block;cursor:pointer}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
+<script src="visit.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
