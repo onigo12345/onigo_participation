@@ -288,26 +288,6 @@ async function ig(body){
   if(data?.status==="error") throw new Error(data.message);
   return data;
 }
-// フィード用の画像（4:5）：ストーリー画像を真ん中に置く
-async function feedJpeg(path){
-  const bmp=await createImageBitmap(await blobOf(path));
-  const c=document.createElement("canvas"); c.width=1080; c.height=1350; const g=c.getContext("2d");
-  g.fillStyle="#faf8f4"; g.fillRect(0,0,1080,1350);
-  const w=Math.round(bmp.width*1350/bmp.height); g.drawImage(bmp,(1080-w)/2,0,w,1350);
-  return c.toDataURL("image/jpeg",0.9);
-}
-function openFeed(card,r){
-  if(card.querySelector(".feedbox")) return;
-  const box=document.createElement("div"); box.className="feedbox";
-  const ta=document.createElement("textarea"); ta.value=`${r.participant_no}人目のおともだち、つかまえた。\n\n#鬼ごっこ #鬼ごっこサークル #立命館OIC #岩倉公園`;
-  const go=btn("この文章でフィードに投稿する","blue",async()=>{
-    if(!go.classList.contains("armed")){ go.classList.add("armed"); go.textContent="本当に投稿する（もう一度押す）"; setTimeout(()=>{go.classList.remove("armed");go.textContent="この文章でフィードに投稿する";},4000); return; }
-    go.disabled=true; go.textContent="投稿中…";
-    try{ await ig({feed:r.id,image:await feedJpeg(r.story_path),caption:ta.value}); say(`No.${pad(r.participant_no)} をフィードに投稿しました。`); load(); }
-    catch(e){ say("フィードに投稿できませんでした（"+e.message+"）",true); go.disabled=false; go.textContent="この文章でフィードに投稿する"; }
-  });
-  box.append(ta,go,btn("やめる","ghost",()=>box.remove())); card.append(box); ta.focus();
-}
 $("autoStory").addEventListener("change",async e=>{
   const {error}=await sb.from("settings").update({auto_story:e.target.checked}).eq("id",1);
   if(error){ say("変更できませんでした（"+error.message+"）",true); e.target.checked=!e.target.checked; return; }

@@ -103,6 +103,8 @@ async function postFeedRow(row: number) {
     await sleep(4000);   // 投稿の順番がInstagramの中でも入れ替わらないよう、少し間をあける
   }
   await db.from("feed_rows").update({ status: "posted", posted_at: new Date().toISOString() }).eq("row_no", row);
+  // 投稿が終わったら、投稿用に作った画像は消す（Instagram に渡し終わっているので、手の写った画像を余分に残さない）
+  await db.storage.from(BUCKET).remove((posts || []).map((p) => p.path));
   return { status: "ok" };
 }
 

@@ -208,7 +208,14 @@ $("finish").addEventListener("click", () => {
 });
 // 使ってよいと選んだ人：画像の保存が終わってから、その選択を記録する（投稿はサーバー・管理者が行う）
 async function sendConsent(story, feed) {
-  try { if (uploading) await uploading; await window.Visit.consent(story, feed); }
+  try {
+    // 前の見え方の保存が途中だった時は、それが終わってから、最後に選んだ見え方をもう一度保存する
+    // （同意が、最後に選んだ見え方の画像に付くように）
+    while (uploading) await uploading;
+    flushUpload();
+    while (uploading) await uploading;
+    await window.Visit.consent(story, feed);
+  }
   catch (e) { console.warn("consent", e); }
 }
 
