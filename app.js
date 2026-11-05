@@ -65,7 +65,7 @@ showNumber();
 /* ---------- アンケート（初めての人だけ・1画面） ---------- */
 async function goNext() {
   try { await withTimeout(joinPromise || getNumber(), 8000); } catch {}
-  if (hasProfile) startCamera(); else show("s-survey");
+  if (hasProfile) startRules(); else show("s-survey");
 }
 $("survey").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -79,7 +79,7 @@ $("survey").addEventListener("submit", async (e) => {
       $("sameName").textContent = `${nick}さん（${$("faculty").value}）`;
       $("same").hidden = false; return;
     }
-    hasProfile = true; startCamera();
+    hasProfile = true; startRules();
   } catch (err) { console.warn(err); toast("送れませんでした。電波の良い場所でもう一度押してね。", 3500); }
   finally { btn.disabled = false; }
 });
@@ -91,7 +91,7 @@ $("sameYes").addEventListener("click", async () => {
     if (r.status === "busy") { $("same").hidden = true; toast("その名前の人は、今日はもう参加しています。名前を少し変えてね", 4000); $("nickname").focus(); return; }
     if (r.status !== "ok") throw new Error(r.status);
     myNo = r.no; $("countNum").textContent = r.no; hasProfile = true; $("same").hidden = true;
-    toast("おかえり！", 2400); startCamera();
+    toast("おかえり！", 2400); startRules();
   } catch (err) { console.warn(err); toast("つなげませんでした。電波の良い場所でもう一度押してね。", 3500); }
   finally { $("sameYes").disabled = false; }
 });
@@ -99,7 +99,29 @@ $("sameNo").addEventListener("click", () => {
   $("same").hidden = true; $("nickname").focus(); $("nickname").select();
   toast("同じ名前の人がいるので、少し変えてね（例：たっくん2）", 4000);
 });
-$("surveySkip").addEventListener("click", startCamera);
+$("surveySkip").addEventListener("click", () => startRules());
+
+/* ---------- 公園でのお願い（1枚ずつ）→ 手を撮影するか選ぶ ---------- */
+const RULES = [
+  { text: "公園で遊ぶ<br>子どもたちに<br>気をつけてね！", color: "var(--red)" },
+  { text: "モルックサークルの<br>皆さんの邪魔を<br>しないように！", color: "var(--blue)" },
+  { text: "他の人の邪魔になる<br>場所では<br>遊ばないように！", sub: "遊具・歩道エリア等", color: "var(--purple)" },
+];
+let ruleIdx = 0;
+function startRules() { ruleIdx = 0; showRule(); show("s-rules"); }
+function showRule() {
+  const r = RULES[ruleIdx];
+  $("ruleText").innerHTML = r.text; $("ruleText").style.color = r.color;
+  $("ruleSub").textContent = r.sub || ""; $("ruleSub").hidden = !r.sub;
+  $("ruleDots").innerHTML = RULES.map((_, i) => `<i class="${i === ruleIdx ? "on" : ""}"></i>`).join("");
+  const card = $("ruleCard"); card.classList.remove("in"); void card.offsetWidth; card.classList.add("in");
+}
+$("ruleNext").addEventListener("click", () => {
+  if (ruleIdx < RULES.length - 1) { ruleIdx++; showRule(); } else show("s-choose");
+});
+$("chooseShoot").addEventListener("click", startCamera);
+$("chooseSkip").addEventListener("click", finishWithoutPhoto);
+function finishWithoutPhoto() { $("doneNo").textContent = myNo || "?"; show("s-done"); }
 
 /* ---------- 手の検出モデル（裏で先に読み込む。失敗したら次の撮影でもう一度） ---------- */
 const WASM = new URL("vendor/mediapipe/wasm", location.href).href;
@@ -143,7 +165,7 @@ loadFonts();
 
 /* ---------- 2. カメラ ---------- */
 $("toCamera").addEventListener("click", goNext);
-$("back").addEventListener("click", () => { stopCamera(); show("s-welcome"); });
+$("back").addEventListener("click", () => { stopCamera(); show("s-choose"); });
 $("flip").addEventListener("click", () => { facing = facing === "environment" ? "user" : "environment"; startCamera(); });
 $("retake").addEventListener("click", () => { flushUpload(); startCamera(); });
 $("finish").addEventListener("click", () => { flushUpload(); $("doneNo").textContent = myNo || "?"; show("s-done"); });
