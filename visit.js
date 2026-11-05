@@ -58,6 +58,10 @@
       if (sb) return rpc("relink", { p_device: deviceKey(), p_faculty: p.faculty, p_nickname: p.nickname });
       return { status: "notfound" };
     },
+    // ストーリーに載せてほしいと記録する（今日いちばん新しい画像・1日1回まで）
+    async requestStory() {
+      if (sb) return rpc("request_story", { p_device: deviceKey() });
+    },
     async addSubmission(image, story, look) {
       if (sb) return rpc("add_submission", { p_device: deviceKey(), p_image: image, p_story: story, p_look: look });
     },

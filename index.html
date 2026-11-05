@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#faf8f4">
 <title>つかまえた。｜立命館OIC 鬼ごっこサークル</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=4">
+<link rel="stylesheet" href="fonts/fonts.css?v=5">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -70,6 +70,9 @@ html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-fam
 .camnote{display:block;margin-top:6px;color:var(--red);font-weight:700}
 .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
 label.btn{display:block;cursor:pointer}
+.storyopt{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:start;font-size:.86rem;font-weight:700;line-height:1.5;padding:10px 12px;border:1.5px solid var(--ink);background:#fff;cursor:pointer}
+.storyopt input{width:22px;height:22px;margin:0;accent-color:var(--blue);grid-row:span 2}
+.storyopt small{font-size:.74rem;font-weight:500;color:var(--muted)}
 .visit-note{margin:0;font-weight:900;color:var(--blue)}
 #s-survey{overflow-y:auto;gap:12px}
 #s-survey>*{flex-shrink:0}
@@ -152,7 +155,7 @@ label.btn{display:block;cursor:pointer}
   <div class="welcome-foot">
     <div class="notice" role="note">
       <b>ご注意</b>
-      撮影した手の画像は、鬼ごっこサークル公式Instagram（@onigo12345）などの広報に使わせていただくことがあります。写るのは手だけで、名前は載せません。また、来た時刻・帰った時刻と、初回の簡単なアンケートをサークル運営の参考にします。同じ人の見分けには、このスマホのブラウザに保存するランダムな目印（名前や連絡先は含みません）を使います。記録は帰る時のページからいつでも消せます（くわしくは<a href="privacy.html">集めているデータ</a>）。手をそのまま見せたくない人は、撮影のあとで「ふんわり」「強くぼかす」を選べます。掲載をやめてほしい時は、DMでご連絡ください。
+      撮影した手の画像は、鬼ごっこサークル公式Instagram（@onigo12345）などの広報に使わせていただくことがあります。写るのは手だけで、名前は載せません。最後の画面でチェックを付けたままにすると、作った画像がサークルのストーリーに載ります（24時間で消えます）。また、来た時刻・帰った時刻と、初回の簡単なアンケートをサークル運営の参考にします。同じ人の見分けには、このスマホのブラウザに保存するランダムな目印（名前や連絡先は含みません）を使います。記録は帰る時のページからいつでも消せます（くわしくは<a href="privacy.html">集めているデータ</a>）。手をそのまま見せたくない人は、撮影のあとで「ふんわり」「強くぼかす」を選べます。掲載をやめてほしい時は、DMでご連絡ください。
       <span style="display:block;margin-top:4px">※このサークルは、立命館大学の公認団体ではなく、学生有志によるサークルです。</span>
       <span class="camnote">※検索アプリ（Google・Yahoo!など）やブラウザアプリの設定によっては、カメラが起動しないことがあります。その時はSafariやChromeで開いてください。</span>
     </div>
@@ -284,6 +287,7 @@ label.btn{display:block;cursor:pointer}
     <a class="btn ghost" id="save" download="onigokko.jpg">画像を保存する</a>
     <button class="btn ghost" id="retake" type="button">撮りなおす</button>
     <p class="note" id="saveNote">保存できない時は、画像を長押しして保存してください。</p>
+    <label class="storyopt" id="storyOpt"><input type="checkbox" id="storyOk" checked> この画像を、サークルのInstagram（@onigo12345）のストーリーに載せる<small>24時間で消えます。載せたくない時はチェックを外してね</small></label>
     <button class="btn blue" id="finish" type="button">参加する！</button>
   </div>
 </section>
@@ -301,8 +305,8 @@ label.btn{display:block;cursor:pointer}
 <div class="toast" id="toast" hidden></div>
 
 <script src="vendor/supabase.js"></script>
-<script src="config.js?v=20261105c"></script>
-<script src="visit.js?v=20261105c"></script>
-<script type="module" src="app.js?v=20261105c"></script>
+<script src="config.js?v=20261105d"></script>
+<script src="visit.js?v=20261105d"></script>
+<script type="module" src="app.js?v=20261105d"></script>
 </body>
 </html>

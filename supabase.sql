@@ -285,6 +285,86 @@ create policy "anyone can upload hand" on storage.objects for insert to anon
 create policy "admin reads hands"   on storage.objects for select to authenticated using (bucket_id = 'hands' and public.is_admin());
 create policy "admin deletes hands" on storage.objects for delete to authenticated using (bucket_id = 'hands' and public.is_admin());
 
+-- ---------- Instagramへの投稿 ----------
+-- ストーリー：参加者が「参加する！」の時に「載せる」を選んだ画像だけを、1日1回、自動で投稿する
+-- フィード　：管理ページで管理者が選んだ画像だけを投稿する
+-- Instagramの鍵（アクセストークン）はデータベースには置かず、Edge Function の Secrets（IG_TOKEN）にだけ置く
+alter table submissions add column if not exists story_requested_at timestamptz;   -- 本人が「載せる」を選んだ時刻
+alter table submissions add column if not exists story_posting_at   timestamptz;   -- 投稿の処理を始めた時刻（二重投稿を防ぐ）
+alter table submissions add column if not exists story_posted_at    timestamptz;
+alter table submissions add column if not exists story_media_id     text;
+alter table submissions add column if not exists feed_posted_at     timestamptz;
+alter table submissions add column if not exists feed_media_id      text;
+alter table submissions add column if not exists post_error         text;
+
+create table if not exists settings (
+  id int primary key default 1 check (id = 1),
+  auto_story boolean not null default true,      -- ストーリーの自動投稿（管理ページで止められる）
+  story_daily_cap int not null default 30        -- 24時間に自動で投稿するストーリーの上限（いたずら対策）
+);
+insert into settings (id) values (1) on conflict do nothing;
+alter table settings enable row level security;
+revoke all on settings from anon, authenticated;
+grant select, update (auto_story, story_daily_cap) on settings to authenticated;
+drop policy if exists "admin manages settings" on settings;
+create policy "admin manages settings" on settings for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- 参加者：今日いちばん新しい画像を、ストーリーに載せてほしいと記録する（1日1回まで）
+create or replace function public.request_story(p_device text) returns text
+  language plpgsql security definer set search_path = public as $$
+declare pid bigint := public._me(p_device); sid bigint;
+begin
+  if pid is null then return 'unknown'; end if;
+  if exists (select 1 from submissions where participant_no = pid
+             and (story_requested_at at time zone 'Asia/Tokyo')::date = public._today()) then return 'already'; end if;
+  select id into sid from submissions where participant_no = pid and story_path is not null
+    and (created_at at time zone 'Asia/Tokyo')::date = public._today() order by created_at desc limit 1;
+  if sid is null then return 'none'; end if;
+  update submissions set story_requested_at = now() where id = sid;
+  return 'ok';
+end $$;
+revoke all on function public.request_story(text) from public;
+grant execute on function public.request_story(text) to anon, authenticated;
+
+-- サーバー（Edge Function）だけが使う：投稿してよい画像なら「投稿中」にして、画像の場所を返す
+create or replace function public.claim_story(p_id bigint, p_force boolean default false) returns text
+  language plpgsql security definer set search_path = public as $$
+declare st settings; n int; path text;
+begin
+  select * into st from settings where id = 1;
+  if not p_force and not coalesce(st.auto_story, false) then return null; end if;
+  select count(*) into n from submissions where coalesce(story_posting_at, story_posted_at) > now() - interval '24 hours';
+  if n >= coalesce(st.story_daily_cap, 30) then
+    update submissions set post_error = '24時間の上限に達したため、投稿しませんでした' where id = p_id and story_posted_at is null;
+    return null;
+  end if;
+  update submissions set story_posting_at = now(), post_error = null
+   where id = p_id and story_path is not null and story_posted_at is null and story_posting_at is null
+     and story_requested_at is not null and (p_force or story_requested_at > now() - interval '30 minutes')
+   returning story_path into path;
+  return path;
+end $$;
+revoke all on function public.claim_story(bigint, boolean) from public, anon, authenticated;
+grant execute on function public.claim_story(bigint, boolean) to service_role;
+
+-- 「載せる」が記録されたら、Edge Function に合図を送る（中身は送らない。Edge Function がデータベースを見て判断する）
+-- ※ 自分で動かす時は、URL を自分のプロジェクトのものに書き換えてください
+create extension if not exists pg_net;
+create or replace function public._story_signal() returns trigger
+  language plpgsql security definer set search_path = public as $$
+begin
+  perform net.http_post(
+    url := 'https://axwbndpdzlajvpqnegde.supabase.co/functions/v1/instagram',
+    body := jsonb_build_object('story', new.id),
+    headers := '{"Content-Type": "application/json"}'::jsonb);
+  return new;
+end $$;
+revoke all on function public._story_signal() from public, anon, authenticated;
+drop trigger if exists story_signal on submissions;
+create trigger story_signal after update of story_requested_at on submissions
+  for each row when (old.story_requested_at is null and new.story_requested_at is not null)
+  execute function public._story_signal();
+
 -- ---------- 最初のQR（代表が設置するもの） ----------
 insert into spots (token, placer, note) values ('fjpc5t6gz9', '代表', '最初のQR') on conflict (token) do nothing;
 

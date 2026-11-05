@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>管理ページ｜つかまえた。</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=4">
+<link rel="stylesheet" href="fonts/fonts.css?v=5">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--orange:#f5821f;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;--line:#dedbe4;--panel:#fff;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -66,6 +66,14 @@ td.n,th.n{text-align:right}
 .qrshow figure{margin:0;display:grid;gap:8px;justify-items:start}
 .qrshow canvas{width:260px;max-width:100%;height:auto;border:1px solid var(--line)}
 .hint{font-size:.8rem;color:var(--muted);line-height:1.7;margin:0}
+.igbox{background:#fff;border:1px solid var(--line);padding:14px;display:grid;gap:10px}
+.toggle{display:flex;gap:8px;align-items:center;color:var(--ink);font-size:.9rem;font-weight:700;cursor:pointer}
+.toggle input{width:20px;height:20px;margin:0}
+.post{font-size:.75rem;display:flex;flex-wrap:wrap;gap:4px 10px}
+.post .ok{color:#1d7a3e;font-weight:700} .post .ng{color:var(--red);font-weight:700}
+.posterr{font-size:.72rem;color:var(--red);word-break:break-all}
+.feedbox{display:grid;gap:6px;padding:0 10px 10px}
+.feedbox textarea{font:inherit;font-size:.8rem;padding:8px;border:1px solid var(--line);min-height:5em;resize:vertical}
 </style>
 </head>
 <body>
@@ -100,6 +108,12 @@ td.n,th.n{text-align:right}
         <button class="btn ghost" id="zipStory" type="button">ストーリー画像をまとめて保存</button>
         <button class="btn ghost" id="reload" type="button">更新</button>
       </div>
+    </div>
+    <div class="igbox" id="igbox">
+      <h2 style="margin:0">Instagram への投稿</h2>
+      <label class="toggle"><input type="checkbox" id="autoStory"> 参加者が「載せる」を選んだ画像を、ストーリーに自動で投稿する</label>
+      <div class="tools"><button class="btn ghost" id="igCheck" type="button">Instagramとの接続を確認</button><span class="hint" id="igState"></span></div>
+      <p class="hint">自動で投稿するのは、参加者が「参加する！」の時にチェックを付けたままにした画像だけです（1人1日1回、24時間に最大<span id="capN">30</span>件）。止めている間に参加した人の画像は、各画像の「ストーリーに投稿」で後から出せます。フィードへの投稿は、各画像の「フィードに投稿」から行います。</p>
     </div>
     <div class="filter" id="filter" role="group" aria-label="見え方で絞り込む">
       <button type="button" data-v="all" aria-pressed="true">すべて</button>
@@ -188,7 +202,7 @@ async function processDeletions(){
 }
 
 async function load(){
-  say("読み込み中…");
+  say("読み込み中…"); loadSettings();
   const [people,subs]=await Promise.all([
     sb.from("participants").select("*",{count:"exact",head:true}),
     sb.from("submissions").select("*").order("created_at",{ascending:false}).limit(5000),
@@ -226,7 +240,23 @@ function render(){
     meta.innerHTML=`<span class="no">No.${pad(r.participant_no)}</span>
       <span><span class="chip ${r.look||"none"}">${LOOK[r.look]||"そのまま"}</span>　${new Date(r.created_at).toLocaleString("ja-JP")}</span>
       ${older>0?`<span style="color:var(--muted)">ほかに${older}件（選び直す前の画像）</span>`:""}`;
+    const post=document.createElement("div"); post.className="post";
+    const st=r.story_posted_at?'<span class="ok">ストーリー：投稿済み</span>'
+      :!r.story_requested_at?'<span>ストーリー：載せない</span>'
+      :r.post_error&&/^ストーリー|上限/.test(r.post_error)?'<span class="ng">ストーリー：失敗</span>'
+      :r.story_posting_at?'<span>ストーリー：投稿中</span>':'<span>ストーリー：まだ</span>';
+    post.innerHTML=st+(r.feed_posted_at?'<span class="ok">フィード：投稿済み</span>':'');
+    meta.append(post);
+    if(r.post_error){ const e=document.createElement("span"); e.className="posterr"; e.textContent=r.post_error; meta.append(e); }
     const acts=document.createElement("div"); acts.className="acts";
+    if(r.story_requested_at&&!r.story_posted_at){
+      const b=btn("ストーリーに投稿","blue",async()=>{ b.disabled=true; b.textContent="投稿中…";
+        try{ await ig({retryStory:r.id}); say(`No.${pad(r.participant_no)} をストーリーに投稿しました。`); }
+        catch(e){ say("ストーリーに投稿できませんでした（"+e.message+"）",true); }
+        load(); });
+      acts.append(b); }
+    if(r.story_path&&!r.feed_posted_at){
+      acts.append(btn("フィードに投稿","ghost",()=>openFeed(card,r))); }
     acts.append(btn("素材を保存","ghost",()=>download(r.image_path,`${pad(r.participant_no)}_${r.look}.png`)));
     if(r.story_path) acts.append(btn("ストーリーを保存","ghost",()=>download(r.story_path,`${pad(r.participant_no)}_story.jpg`)));
     const del=btn("掲載をやめる","danger",async()=>{
@@ -239,6 +269,48 @@ function render(){
 }
 function btn(t,cls,fn){ const b=document.createElement("button"); b.type="button"; b.className="btn "+cls; b.textContent=t; b.onclick=fn; return b; }
 
+// Instagram への投稿はサーバー（Edge Function「instagram」）が行う。鍵はこのページには置かない
+async function ig(body){
+  const {data,error}=await sb.functions.invoke("instagram",{body});
+  if(error){ let m=error.message; try{ const j=await error.context.json(); m=j.message||j.error||m; }catch{} throw new Error(m); }
+  if(data?.status==="error") throw new Error(data.message);
+  return data;
+}
+// フィード用の画像（4:5）：ストーリー画像を真ん中に置く
+async function feedJpeg(path){
+  const bmp=await createImageBitmap(await blobOf(path));
+  const c=document.createElement("canvas"); c.width=1080; c.height=1350; const g=c.getContext("2d");
+  g.fillStyle="#faf8f4"; g.fillRect(0,0,1080,1350);
+  const w=Math.round(bmp.width*1350/bmp.height); g.drawImage(bmp,(1080-w)/2,0,w,1350);
+  return c.toDataURL("image/jpeg",0.9);
+}
+function openFeed(card,r){
+  if(card.querySelector(".feedbox")) return;
+  const box=document.createElement("div"); box.className="feedbox";
+  const ta=document.createElement("textarea"); ta.value=`${r.participant_no}人目のおともだち、つかまえた。\n\n#鬼ごっこ #鬼ごっこサークル #立命館OIC #岩倉公園`;
+  const go=btn("この文章でフィードに投稿する","blue",async()=>{
+    if(!go.classList.contains("armed")){ go.classList.add("armed"); go.textContent="本当に投稿する（もう一度押す）"; setTimeout(()=>{go.classList.remove("armed");go.textContent="この文章でフィードに投稿する";},4000); return; }
+    go.disabled=true; go.textContent="投稿中…";
+    try{ await ig({feed:r.id,image:await feedJpeg(r.story_path),caption:ta.value}); say(`No.${pad(r.participant_no)} をフィードに投稿しました。`); load(); }
+    catch(e){ say("フィードに投稿できませんでした（"+e.message+"）",true); go.disabled=false; go.textContent="この文章でフィードに投稿する"; }
+  });
+  box.append(ta,go,btn("やめる","ghost",()=>box.remove())); card.append(box); ta.focus();
+}
+$("autoStory").addEventListener("change",async e=>{
+  const {error}=await sb.from("settings").update({auto_story:e.target.checked}).eq("id",1);
+  if(error){ say("変更できませんでした（"+error.message+"）",true); e.target.checked=!e.target.checked; return; }
+  say(e.target.checked?"ストーリーの自動投稿を始めました。":"ストーリーの自動投稿を止めました。");
+});
+$("igCheck").addEventListener("click",async()=>{
+  $("igState").textContent="確認中…";
+  try{ const r=await ig({check:true}); $("igState").textContent=`つながっています（@${r.username}）`; }
+  catch(e){ $("igState").textContent="つながっていません："+e.message; }
+});
+async function loadSettings(){
+  const {data,error}=await sb.from("settings").select("auto_story,story_daily_cap").eq("id",1).maybeSingle();
+  if(error||!data){ $("igbox").hidden=true; return; }
+  $("igbox").hidden=false; $("autoStory").checked=data.auto_story; $("capN").textContent=data.story_daily_cap;
+}
 async function blobOf(path){ const {data,error}=await sb.storage.from(BUCKET).download(path); if(error) throw error; return data; }
 function saveBlob(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.append(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000); }
 async function download(path,name){ try{ saveBlob(await blobOf(path),name); }catch(e){ say("保存できませんでした（"+(e.message||e)+"）",true); } }
