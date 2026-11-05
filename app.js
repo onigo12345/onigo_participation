@@ -222,26 +222,26 @@ function copyOf(src) { const c = canvas(src.width, src.height); c.getContext("2d
 let filterMode = "none";
 function softFilter(photo, lm) {
   const palm = dist(lm[0], lm[9]);
-  const c = tone(copyOf(photo), 1.15, 0.9, 0.9), g = c.getContext("2d");
+  const c = tone(copyOf(photo), 1.1, 0.94, 0.94), g = c.getContext("2d");
   // 細かい質感（毛・乾燥）をならす：ぼかした写真を重ねる
-  const smooth = blurred(c, Math.max(3, palm * 0.08));
-  g.globalAlpha = 1; g.drawImage(smooth, 0, 0);
+  const smooth = blurred(c, Math.max(2, palm * 0.05));
+  g.globalAlpha = 0.75; g.drawImage(smooth, 0, 0);
   // 光がにじむモヤ：大きくぼかした明るい層を「スクリーン」で重ねる
-  const haze = tone(blurred(photo, Math.max(6, palm * 0.16)), 1.3, 1, 1);
-  g.globalCompositeOperation = "screen"; g.globalAlpha = 0.32; g.drawImage(haze, 0, 0);
+  const haze = tone(blurred(photo, Math.max(5, palm * 0.12)), 1.2, 1, 1);
+  g.globalCompositeOperation = "screen"; g.globalAlpha = 0.22; g.drawImage(haze, 0, 0);
   // 白いベール
-  g.globalCompositeOperation = "source-over"; g.globalAlpha = 0.08; g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.globalAlpha = 1;
+  g.globalCompositeOperation = "source-over"; g.globalAlpha = 0.05; g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.globalAlpha = 1;
   free(smooth, haze); return c;
 }
 // 強くぼかす：細かいところは見えず、手の形と色だけがわかる程度
 function strongBlur(photo, lm) {
   const palm = dist(lm[0], lm[9]);
-  const c = tone(copyOf(photo), 1.2, 0.85, 0.85), g = c.getContext("2d");
-  const heavy = blurred(c, Math.max(8, palm * 0.18));
+  const c = tone(copyOf(photo), 1.15, 0.9, 0.9), g = c.getContext("2d");
+  const heavy = blurred(c, Math.max(5, palm * 0.11));
   g.drawImage(heavy, 0, 0);
-  const haze = tone(blurred(photo, Math.max(12, palm * 0.3)), 1.35, 1, 1);
-  g.globalCompositeOperation = "screen"; g.globalAlpha = 0.4; g.drawImage(haze, 0, 0);
-  g.globalCompositeOperation = "source-over"; g.globalAlpha = 0.14; g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.globalAlpha = 1;
+  const haze = tone(blurred(photo, Math.max(9, palm * 0.22)), 1.25, 1, 1);
+  g.globalCompositeOperation = "screen"; g.globalAlpha = 0.28; g.drawImage(haze, 0, 0);
+  g.globalCompositeOperation = "source-over"; g.globalAlpha = 0.09; g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.globalAlpha = 1;
   free(heavy, haze); return c;
 }
 // （使っていない）手の形をオレンジで塗る見え方の色
