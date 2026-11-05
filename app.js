@@ -8,7 +8,7 @@ const W = 1080, H = 1920;   // Instagramストーリー（9:16）
 const C = { red: "#e82c34", blue: "#1c48c4", purple: "#9a26d9", paper: "#faf8f4", ink: "#19161e" };
 const $ = (id) => document.getElementById(id);
 // 古いページ（ブラウザに残ったもの）と新しいプログラムが混ざった時は、一度だけ新しく読み直す
-if (!$("ruleNext") || !$("chooseSkip") || !$("doneB") || !$("storyOk")) {
+if (!$("ruleNext") || !$("chooseSkip") || !$("doneB") || !$("okFeed")) {
   let tried = false; try { tried = sessionStorage.getItem("onigokko_reload") === location.search; } catch {}
   if (!tried) {
     try { sessionStorage.setItem("onigokko_reload", location.search); } catch {}
@@ -188,12 +188,13 @@ $("flip").addEventListener("click", () => { facing = facing === "environment" ? 
 $("retake").addEventListener("click", () => { flushUpload(); startCamera(); });
 $("finish").addEventListener("click", () => {
   flushUpload(); showDone();
-  if ($("storyOk").checked) requestStory();
+  const story = $("okStory").checked, feed = $("okFeed").checked;
+  if (story || feed) sendConsent(story, feed);
 });
-// 「載せる」を選んだ人：画像の保存が終わってから、ストーリーに載せてほしいと記録する（投稿はサーバーが行う）
-async function requestStory() {
-  try { if (uploading) await uploading; await window.Visit.requestStory(); }
-  catch (e) { console.warn("story", e); }
+// 使ってよいと選んだ人：画像の保存が終わってから、その選択を記録する（投稿はサーバー・管理者が行う）
+async function sendConsent(story, feed) {
+  try { if (uploading) await uploading; await window.Visit.consent(story, feed); }
+  catch (e) { console.warn("consent", e); }
 }
 
 async function startCamera() {
@@ -681,5 +682,5 @@ function flushUpload() {
   })();
 }
 
-// お試しモード（サーバー未設定）では、ストーリーに載せる選択は出さない
-if (!sb) $("storyOpt").hidden = true;
+// お試しモード（サーバー未設定）では、Instagramで使ってよいかの選択は出さない
+if (!sb) $("consent").hidden = true;

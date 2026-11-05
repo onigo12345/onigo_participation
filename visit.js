@@ -58,9 +58,9 @@
       if (sb) return rpc("relink", { p_device: deviceKey(), p_faculty: p.faculty, p_nickname: p.nickname });
       return { status: "notfound" };
     },
-    // ストーリーに載せてほしいと記録する（今日いちばん新しい画像・1日1回まで）
-    async requestStory() {
-      if (sb) return rpc("request_story", { p_device: deviceKey() });
+    // Instagramで使ってよいかを記録する（今日いちばん新しい画像。ストーリーは1日1回まで）
+    async consent(story, feed) {
+      if (sb) return rpc("give_consent", { p_device: deviceKey(), p_story: !!story, p_feed: !!feed });
     },
     async addSubmission(image, story, look) {
       if (sb) return rpc("add_submission", { p_device: deviceKey(), p_image: image, p_story: story, p_look: look });

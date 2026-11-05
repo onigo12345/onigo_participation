@@ -287,7 +287,7 @@ create policy "admin deletes hands" on storage.objects for delete to authenticat
 
 -- ---------- Instagramへの投稿 ----------
 -- ストーリー：参加者が「参加する！」の時に「載せる」を選んだ画像だけを、1日1回、自動で投稿する
--- フィード　：管理ページで管理者が選んだ画像だけを投稿する
+-- フィード　：本人が「投稿にも使ってよい」を選んだ画像の中から、管理者が選んで投稿する
 -- Instagramの鍵（アクセストークン）はデータベースには置かず、Edge Function の Secrets（IG_TOKEN）にだけ置く
 alter table submissions add column if not exists story_requested_at timestamptz;   -- 本人が「載せる」を選んだ時刻
 alter table submissions add column if not exists story_posting_at   timestamptz;   -- 投稿の処理を始めた時刻（二重投稿を防ぐ）
@@ -326,6 +326,26 @@ begin
 end $$;
 revoke all on function public.request_story(text) from public;
 grant execute on function public.request_story(text) to anon, authenticated;
+
+-- 参加者：最後の画面で選んだ「ストーリーに載せる」「投稿にも使ってよい」を、今日いちばん新しい画像に記録する
+alter table submissions add column if not exists feed_ok boolean not null default false;
+create or replace function public.give_consent(p_device text, p_story boolean, p_feed boolean) returns text
+  language plpgsql security definer set search_path = public as $$
+declare pid bigint := public._me(p_device); sid bigint;
+begin
+  if pid is null then return 'unknown'; end if;
+  select id into sid from submissions where participant_no = pid and story_path is not null
+    and (created_at at time zone 'Asia/Tokyo')::date = public._today() order by created_at desc limit 1;
+  if sid is null then return 'none'; end if;
+  if p_feed then update submissions set feed_ok = true where id = sid; end if;
+  if p_story and not exists (select 1 from submissions where participant_no = pid
+             and (story_requested_at at time zone 'Asia/Tokyo')::date = public._today()) then
+    update submissions set story_requested_at = now() where id = sid;   -- ストーリーは1日1回まで
+  end if;
+  return 'ok';
+end $$;
+revoke all on function public.give_consent(text, boolean, boolean) from public;
+grant execute on function public.give_consent(text, boolean, boolean) to anon, authenticated;
 
 -- サーバー（Edge Function）だけが使う：投稿してよい画像なら「投稿中」にして、画像の場所を返す
 create or replace function public.claim_story(p_id bigint, p_force boolean default false) returns text

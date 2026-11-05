@@ -81,8 +81,9 @@ async function postStory(id: number, force = false) {
 }
 
 async function postFeed(id: number, dataUrl: string, caption: string) {
-  const { data: row } = await db.from("submissions").select("id, participant_no, feed_posted_at").eq("id", id).maybeSingle();
+  const { data: row } = await db.from("submissions").select("id, participant_no, feed_posted_at, feed_ok").eq("id", id).maybeSingle();
   if (!row) return { status: "error", message: "画像が見つかりません" };
+  if (!row.feed_ok) return { status: "error", message: "本人が「投稿にも使ってよい」を選んでいない画像です" };
   if (row.feed_posted_at) return { status: "error", message: "この画像はもうフィードに投稿しています" };
   const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");
   if (!m) return { status: "error", message: "画像の形式が正しくありません" };
