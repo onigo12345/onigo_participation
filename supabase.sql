@@ -157,22 +157,21 @@ end $$;
 -- 「前にも来た」本人：この端末を、前の自分の記録につなぎ直す（今日の来場も移す）
 create or replace function public.relink(p_device text, p_faculty text, p_nickname text) returns json
   language plpgsql security definer set search_path = public as $$
-declare me bigint := public._me(p_device); old bigint; n int; today date := (now() at time zone 'Asia/Tokyo')::date;
+declare me bigint := public._me(p_device); old bigint; today date := (now() at time zone 'Asia/Tokyo')::date;
 begin
   if me is null then raise exception 'unknown device'; end if;
   select id into old from participants
    where id <> me and faculty = p_faculty and public._norm(nickname) = public._norm(p_nickname) limit 1;
   if old is null then return json_build_object('status', 'notfound'); end if;
-  -- 今日の来場：前の自分にまだ今日の記録がなければ移す。あれば新しい方を消す
+  -- 前の自分に今日の記録がすでにある＝今日は別のスマホで参加済み。なりすましで他人の今日の記録を見られないよう、つなぎ直さない
   if exists (select 1 from visits where participant_no = old and visit_date = today) then
-    delete from visits where participant_no = me and visit_date = today;
+    return json_build_object('status', 'busy');
   end if;
   update visits set participant_no = old where participant_no = me;
   update submissions set participant_no = old where participant_no = me;
   delete from participants where id = me;
   update participants set device_key = p_device where id = old;
-  select count(*) into n from visits where participant_no = old;
-  return json_build_object('status', 'ok', 'no', old, 'visits', n);
+  return json_build_object('status', 'ok', 'no', old);
 end $$;
 
 revoke all on function public._norm(text) from public, anon, authenticated;

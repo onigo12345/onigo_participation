@@ -88,9 +88,10 @@ $("sameYes").addEventListener("click", async () => {
   $("sameYes").disabled = true;
   try {
     const r = await window.Visit.relink({ faculty: $("faculty").value, nickname: $("nickname").value.trim() });
+    if (r.status === "busy") { $("same").hidden = true; toast("その名前の人は、今日はもう参加しています。名前を少し変えてね", 4000); $("nickname").focus(); return; }
     if (r.status !== "ok") throw new Error(r.status);
     myNo = r.no; $("countNum").textContent = r.no; hasProfile = true; $("same").hidden = true;
-    toast(`おかえり！今日で${r.visits}回目の参加です`, 3200); startCamera();
+    toast("おかえり！", 2400); startCamera();
   } catch (err) { console.warn(err); toast("つなげませんでした。電波の良い場所でもう一度押してね。", 3500); }
   finally { $("sameYes").disabled = false; }
 });
