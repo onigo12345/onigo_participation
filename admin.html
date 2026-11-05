@@ -309,7 +309,10 @@ $("igCheck").addEventListener("click",async()=>{
 async function loadSettings(){
   const {data,error}=await sb.from("settings").select("auto_story,story_daily_cap").eq("id",1).maybeSingle();
   if(error||!data){ $("igbox").hidden=false; $("autoStory").disabled=true;
-    $("igState").textContent="設定を読み込めませんでした："+(error?`${error.code||""} ${error.message}`:"設定の行がありません（supabase.sql を実行してください）"); return; }
+    $("igState").textContent="設定を読み込めませんでした："+(error?`${error.code||""} ${error.message}`:"設定の行がありません（supabase.sql を実行してください）");
+    // 原因を調べるための情報（ログイン中のアカウントを、データベースがどう見ているか）
+    try{ const w=await sb.rpc("whoami"); if(!w.error) $("igState").textContent+=`　［確認用：${JSON.stringify(w.data)}］`; }catch{}
+    return; }
   $("autoStory").disabled=false;
   $("igbox").hidden=false; $("autoStory").checked=data.auto_story; $("capN").textContent=data.story_daily_cap;
 }
