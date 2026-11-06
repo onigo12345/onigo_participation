@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>管理ページ｜つかまえた。</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=10">
+<link rel="stylesheet" href="fonts/fonts.css?v=11">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--orange:#f5821f;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;--line:#dedbe4;--panel:#fff;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -62,6 +62,7 @@ td.n,th.n{text-align:right}
 .barrow i{display:block;height:12px;background:var(--blue)}
 .barrow .n{text-align:right;font-variant-numeric:tabular-nums}
 .qrform{max-width:460px;background:#fff;border:1px solid var(--line);padding:16px;display:grid;gap:12px}
+.warn{margin:0;background:#fff4d6;border:2px solid #e0a100;padding:10px 14px;font-weight:700}
 .qrshow{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
 .qrshow figure{margin:0;display:grid;gap:8px;justify-items:start}
 .qrshow canvas{width:260px;max-width:100%;height:auto;border:1px solid var(--line)}
@@ -92,8 +93,10 @@ td.n,th.n{text-align:right}
   </form>
 
   <section id="main" hidden style="display:grid;gap:18px">
+    <p class="warn" id="evWarn" hidden></p>
     <nav class="tabs" role="tablist">
       <button type="button" role="tab" data-tab="images" aria-selected="true">画像</button>
+      <button type="button" role="tab" data-tab="events" aria-selected="false">開催</button>
       <button type="button" role="tab" data-tab="data" aria-selected="false">来場データ</button>
       <button type="button" role="tab" data-tab="qr" aria-selected="false">QRをつくる</button>
     </nav>
@@ -109,18 +112,6 @@ td.n,th.n{text-align:right}
         <button class="btn ghost" id="zipStory" type="button">ストーリー画像をまとめて保存</button>
         <button class="btn ghost" id="reload" type="button">更新</button>
       </div>
-    </div>
-    <div class="igbox" id="nextbox">
-      <h2 style="margin:0">次回の日時</h2>
-      <p class="hint">帰る時のページ（青いQR）と掲示用のページに出ます。参加者はワンタップでカレンダーに追加できます。開催が終わったら、次の日時に書き換えてください。</p>
-      <div class="tools" style="flex-wrap:wrap">
-        <input type="datetime-local" id="nextAt" style="font:inherit;padding:8px;border:1px solid var(--line)">
-        <input id="nextPlace" maxlength="40" placeholder="場所" style="font:inherit;padding:8px;border:1px solid var(--line);min-width:12em">
-        <button class="btn blue" id="nextSave" type="button">保存</button>
-        <button class="btn ghost" id="nextClear" type="button">未定にする</button>
-        <span class="hint" id="nextState"></span>
-      </div>
-      <p class="hint">公園の掲示用ページ（開始時刻と今の人数が自動で更新されます）：<a id="nowLink" target="_blank" rel="noopener" href="now.html?k=fjpc5t6gz9">掲示用のページを開く</a>（タブレットやスマホに表示して置いておく）</p>
     </div>
     <div class="igbox" id="igbox">
       <h2 style="margin:0">Instagram への投稿（承認制）</h2>
@@ -151,6 +142,19 @@ td.n,th.n{text-align:right}
     </div>
 
     <!-- 来場データ -->
+    <div id="tab-events" hidden style="display:grid;gap:22px">
+      <p class="hint">公園の掲示用ページ（開催中か・開始時刻・今の人数が自動で更新されます）：<a target="_blank" rel="noopener" href="now.html?k=fjpc5t6gz9">掲示用のページを開く</a>（タブレットやスマホに表示して置いておく）</p>
+      <div class="igbox"><h2 style="margin:0">今の状態</h2><p class="lead" id="evNow" style="margin:0;font-weight:900">–</p>
+        <p class="hint">開催は、開催キーを持つ人が「開始QR」を読んで始め、「終了QR」を読んで終えます。終了QRを読み忘れても、日付が変わると自動で終わります。開始の時に撮った写真は、テロップを入れて自動でストーリーに投稿します。開催した人が、その回の場の責任者です。</p></div>
+      <div><h2>開催の記録</h2><div class="tablewrap"><table id="evList"></table></div></div>
+      <div class="igbox">
+        <h2 style="margin:0">開催キー（人ごと）</h2>
+        <p class="hint">キーを渡す人ごとに作ります。「開始QR」「終了QR」の2枚を、その人だけに渡してください（公園には貼らない）。止めたキーは、すぐ使えなくなります。</p>
+        <div class="tools"><input id="hostName" maxlength="20" placeholder="名前（例：かずあき）" style="font:inherit;padding:8px;border:1px solid var(--line)"><button class="btn blue" id="hostAdd" type="button">キーを作る</button><span class="hint" id="hostState"></span></div>
+        <div class="tablewrap"><table id="hostList"></table></div>
+        <div id="hostQR" class="qrshow" hidden></div>
+      </div>
+    </div>
     <div id="tab-data" hidden style="display:grid;gap:22px">
       <div class="bar">
         <div class="stats" id="dStats"></div>
@@ -217,7 +221,7 @@ $("reload2").addEventListener("click",()=>loadData(true));
 $("filter").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; view=b.dataset.v;
   document.querySelectorAll("#filter button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render(); });
 
-async function start(){ $("login").hidden=true; $("main").hidden=false; $("logout").hidden=false; await processDeletions(); load(); }
+async function start(){ $("login").hidden=true; $("main").hidden=false; $("logout").hidden=false; await processDeletions(); load(); loadEvents(); }
 // 参加者が「わたしの記録を消す」を押した時の画像を、ここで実際に消す
 async function processDeletions(){
   const {data,error}=await sb.from("deletion_requests").select("*");
@@ -365,24 +369,12 @@ $("autoFeed").addEventListener("change",async e=>{
   say(e.target.checked?"フィードの自動投稿を始めました。":"フィードの自動投稿を止めました。");
 });
 async function loadSettings(){
-  const {data,error}=await sb.from("settings").select("story_daily_cap,next_event_at,next_event_place").eq("id",1).maybeSingle();
+  const {data,error}=await sb.from("settings").select("story_daily_cap").eq("id",1).maybeSingle();
   if(error||!data){
     $("igState").textContent="設定を読み込めませんでした："+(error?`${error.code||""} ${error.message}`:"設定の行がありません（supabase.sql を実行してください）");
     return; }
   $("capN").textContent=data.story_daily_cap;
-  if(!$("nextAt").dataset.dirty){ $("nextAt").value=data.next_event_at?toLocal(data.next_event_at):""; $("nextPlace").value=data.next_event_place||""; }
 }
-// datetime-local の値（日本時間）と、データベースの時刻を行き来する
-function toLocal(iso){ const d=new Date(iso), p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }
-["nextAt","nextPlace"].forEach(id=>$(id).addEventListener("input",()=>{ $("nextAt").dataset.dirty="1"; $("nextState").textContent="未保存"; }));
-async function saveNext(at){
-  const {error}=await sb.from("settings").update({next_event_at:at,next_event_place:$("nextPlace").value.trim()||"立命館OIC 岩倉公園"}).eq("id",1);
-  if(error){ $("nextState").textContent="保存できませんでした（"+error.message+"）"; return; }
-  delete $("nextAt").dataset.dirty; $("nextState").textContent=at?"保存しました："+new Date(at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",weekday:"short",hour:"2-digit",minute:"2-digit"}):"未定にしました";
-  if(!at) $("nextAt").value="";
-}
-$("nextSave").addEventListener("click",()=>{ const v=$("nextAt").value; if(!v){ $("nextState").textContent="日時を入れてください"; return; } saveNext(new Date(v).toISOString()); });
-$("nextClear").addEventListener("click",()=>saveNext(null));
 async function blobOf(path){ const {data,error}=await sb.storage.from(BUCKET).download(path); if(error) throw error; return data; }
 function saveBlob(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.append(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000); }
 async function download(path,name){ try{ saveBlob(await blobOf(path),name); }catch(e){ say("保存できませんでした（"+(e.message||e)+"）",true); } }
@@ -422,7 +414,8 @@ async function removeNumber(no){
 document.querySelector(".tabs").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
-  for(const t of ["images","data","qr"]) $("tab-"+t).hidden = t!==b.dataset.tab;
+  for(const t of ["images","events","data","qr"]) $("tab-"+t).hidden = t!==b.dataset.tab;
+  if(b.dataset.tab==="events") loadEvents();
   if(b.dataset.tab==="data") loadData(); if(b.dataset.tab==="qr") loadSpots();
 });
 
@@ -568,6 +561,68 @@ function qrPoster(q, arrive, F, C) {
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) g.fillRect(x0 + (x + 2) * cell, y0 + (y + 2) * cell, cell, cell);
   return c;
 }
+/* ---------- 開催（開催キー・開催の記録） ---------- */
+const QUIET_DAYS=14;   // この日数、開催がなければ知らせる
+const jtime=t=>new Date(t).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo",month:"numeric",day:"numeric",weekday:"short",hour:"2-digit",minute:"2-digit"});
+const jhm=t=>t?new Date(t).toLocaleTimeString("ja-JP",{timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit"}):"";
+async function loadEvents(){
+  const [ev,hs]=await Promise.all([sb.from("events").select("*").order("started_at",{ascending:false}).limit(200), sb.from("hosts").select("*").order("created_at")]);
+  if(ev.error||hs.error){ $("evNow").textContent="読み込めませんでした（"+(ev.error||hs.error).message+"）。SQLを実行したか確認してください。"; return; }
+  const today=new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"});
+  const open=ev.data.find(e=>!e.ended_at&&new Date(e.started_at).toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"})===today);
+  $("evNow").textContent=open?`開催中：${jhm(open.started_at)}から（${open.host_name||"?"}さん）`:"今は開催していません";
+  const last=ev.data[0], days=last?Math.floor((Date.now()-new Date(last.started_at))/864e5):null;
+  $("evWarn").hidden=!(last==null||days>=QUIET_DAYS);
+  $("evWarn").textContent=last?`最近開かれていません（最後の開催は${days}日前・${last.host_name||"?"}さん）。開催キーを持つ人に声をかけてみてください。`:"まだ一度も開催されていません。開催キーを作って、開始QRを読んでください。";
+  const t=$("evList"); t.innerHTML="<tr><th>日時</th><th>開いた人</th><th>お知らせ</th><th></th></tr>";
+  for(const e of ev.data){
+    const tr=document.createElement("tr");
+    const end=e.ended_at?jhm(e.ended_at):(e===open?"開催中":"（終了QRなし・日付で終了）");
+    const post=!e.story_path?"写真なし":e.story_posted_at?'<span class="ok">投稿済み</span>':e.post_error?`<span class="posterr">${esc(e.post_error)}</span>`:"投稿中／待ち";
+    tr.innerHTML=`<td>${jtime(e.started_at)}〜${end}</td><td>${esc(e.host_name||"")}</td><td>${post}</td><td></td>`;
+    if(e.story_path&&!e.story_posted_at){ const b=btn("もう一度投稿","blue",async()=>{ b.disabled=true;
+      try{ await ig({retryEvent:e.id}); say("開催のお知らせを投稿しました。"); }catch(err){ alert("投稿できませんでした："+err.message); } loadEvents(); }); tr.lastChild.append(b); }
+    t.append(tr);
+  }
+  if(!ev.data.length) t.insertAdjacentHTML("beforeend",'<tr><td colspan="4">まだありません。</td></tr>');
+  const h=$("hostList"); h.innerHTML="<tr><th>名前</th><th>状態</th><th>開催した回数</th><th></th></tr>";
+  for(const k of hs.data){
+    const n=ev.data.filter(e=>e.host===k.token).length, tr=document.createElement("tr");
+    tr.innerHTML=`<td>${esc(k.name)}</td><td>${k.active?"使える":"止めている"}</td><td>${n}</td><td></td>`;
+    if(k.active) tr.lastChild.append(btn("QRを出す","ghost",()=>showHostQR(k)));
+    tr.lastChild.append(btn(k.active?"止める":"使えるようにする",k.active?"danger":"ghost",async()=>{
+      const {error}=await sb.from("hosts").update({active:!k.active}).eq("token",k.token);
+      if(error) alert(error.message); loadEvents(); }));
+    h.append(tr);
+  }
+  if(!hs.data.length) h.insertAdjacentHTML("beforeend",'<tr><td colspan="4">まだありません。</td></tr>');
+}
+$("hostAdd").addEventListener("click",async()=>{
+  const name=$("hostName").value.trim(); if(!name){ $("hostState").textContent="名前を入れてください"; return; }
+  const b=new Uint8Array(12); crypto.getRandomValues(b); const token=[...b].map(x=>(x%36).toString(36)).join("");
+  const {error}=await sb.from("hosts").insert({token,name});
+  if(error){ $("hostState").textContent="作れませんでした（"+error.message+"）"; return; }
+  $("hostName").value=""; $("hostState").textContent=`${name}さんのキーを作りました`; await loadEvents(); showHostQR({token,name});
+});
+// 開始QR・終了QRを1枚のカードにする（その人だけに渡す）
+async function showHostQR(k){
+  try{ await Promise.all([700,900].map(w=>document.fonts.load(`${w} 40px "Noto Sans JP"`,"開始終了QR鬼ごっこサークル開催キーさんの人に見せないでください"))); }catch{}
+  const box=$("hostQR"); box.hidden=false; box.innerHTML="";
+  const W=1200,H=760,c=document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
+  g.fillStyle="#faf8f4"; g.fillRect(0,0,W,H); g.fillStyle="#19161e"; g.textBaseline="top";
+  g.font='900 44px "Noto Sans JP",sans-serif'; g.fillText(`${k.name}さんの開催キー`,50,40);
+  g.font='700 22px "Noto Sans JP",sans-serif'; g.fillStyle="#6d6878"; g.fillText("鬼ごっこサークル（立命館OIC 岩倉公園）　人に見せたり、公園に貼ったりしないでください",50,100);
+  [["開始QR","start","#e82c34",50],["終了QR","end","#1c48c4",630]].forEach(([label,a,col,x])=>{
+    const q=qrcode(0,"M"); q.addData(BASE+"host.html?h="+k.token+"&a="+a); q.make();
+    const n=q.getModuleCount(), cell=Math.floor(440/(n+4)), y=160;
+    g.fillStyle=col; g.fillRect(x,y,520,560); g.fillStyle="#fff"; g.fillRect(x+40,y+20,cell*(n+4),cell*(n+4)); g.fillStyle="#19161e";
+    for(let yy=0;yy<n;yy++) for(let xx=0;xx<n;xx++) if(q.isDark(yy,xx)) g.fillRect(x+40+(xx+2)*cell,y+20+(yy+2)*cell,cell,cell);
+    g.fillStyle="#fff"; g.font='900 46px "Noto Sans JP",sans-serif'; g.textAlign="center"; g.fillText(label,x+260,y+480); g.textAlign="left";
+  });
+  const f=document.createElement("figure"), b2=btn("画像で保存","blue",()=>c.toBlob(bl=>saveBlob(bl,`host_${k.name}.png`)));
+  c.style.width="600px"; c.style.maxWidth="100%"; f.append(c,b2); box.append(f); box.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
 function qrCard(url,kind){
   const q=qrcode(0,"H"); q.addData(url); q.make();
   return qrPoster(q,kind==="arrive",(w,s)=>`${w} ${s}px "Noto Sans JP",sans-serif`,{red:"#e82c34",blue:"#1c48c4",ink:"#19161e",paper:"#faf8f4"});

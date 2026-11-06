@@ -466,22 +466,124 @@ grant select, insert, update on feed_rows, feed_posts, feed_state to service_rol
 grant usage, select on all sequences in schema public to service_role;
 grant select on settings to service_role;
 
--- ---------- 次回の日時と、今の人数（掲示用のページ・来た時のページで使う） ----------
-alter table settings add column if not exists next_event_at    timestamptz;
-alter table settings add column if not exists next_event_place text not null default '立命館OIC 岩倉公園';
-grant update (next_event_at, next_event_place) on settings to authenticated;
--- 誰でも読める：今遊んでいる人数（今日来て、まだ帰っていない、4時間以内に来た人）・今日の開始時刻・次回の日時
--- 一人ひとりの記録は返さない
-create or replace function public.public_status() returns json
+-- ---------- 開催（ゲリラ開催：開催キーを持つ人が「開始QR」で始め、「終了QR」で終える） ----------
+-- 開催キーは人ごとに発行し、管理ページで止められる。開いた人が、その回の場の責任者
+create table if not exists hosts (
+  token      text primary key,              -- 開催キー（QRに入る合言葉）
+  name       text not null,                 -- 誰のキーか（管理ページだけで見える）
+  active     boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create table if not exists events (
+  id               bigint generated always as identity primary key,
+  host             text references hosts(token) on delete set null,
+  host_name        text,                    -- キーを消しても、誰が開いた回かは残す
+  started_at       timestamptz not null default now(),
+  ended_at         timestamptz,
+  story_path       text,                    -- 開催者が撮った写真＋テロップ
+  story_posting_at timestamptz,
+  story_posted_at  timestamptz,
+  story_media_id   text,
+  post_error       text
+);
+create index if not exists events_started on events(started_at);
+alter table hosts  enable row level security;
+alter table events enable row level security;
+revoke all on hosts, events from anon, authenticated;
+grant select, insert, update on hosts to authenticated;
+grant select on events to authenticated;
+drop policy if exists "admin manages hosts" on hosts;
+drop policy if exists "admin reads events"  on events;
+create policy "admin manages hosts" on hosts  for all    to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "admin reads events"  on events for select to authenticated using (public.is_admin());
+grant select, update on events to service_role;
+grant select on hosts to service_role;
+
+-- 今開いている回（今日始めて、まだ終了QRが読まれていない回）。日付が変わったら自動で終わったものとみなす
+create or replace function public._open_event() returns events
   language sql stable security definer set search_path = public as $$
-  select json_build_object(
-    'playing',    (select count(*) from visits where visit_date = public._today() and arrived_at is not null
-                     and left_at is null and arrived_at > now() - interval '4 hours'),
-    'started_at', (select min(arrived_at) from visits where visit_date = public._today()),
-    'next_at',    (select next_event_at from settings where id = 1 and next_event_at > now() - interval '3 hours'),
-    'next_place', (select next_event_place from settings where id = 1),
-    'now',        now())
+  select * from events where ended_at is null and (started_at at time zone 'Asia/Tokyo')::date = public._today()
+  order by started_at desc limit 1
 $$;
+revoke all on function public._open_event() from public, anon, authenticated;
+
+-- 開催キーのページ：キーが使えるか、今開催中か
+create or replace function public.host_status(p_key text) returns json
+  language plpgsql stable security definer set search_path = public as $$
+declare h hosts; e events := public._open_event();
+begin
+  select * into h from hosts where token = p_key and active;
+  if h.token is null then return json_build_object('valid', false); end if;
+  return json_build_object('valid', true, 'name', h.name, 'open', e.id is not null, 'started_at', e.started_at,
+    'mine', e.host = p_key, 'opened_by', e.host_name);
+end $$;
+-- 開始QR：今日の開催を始める（もう始まっていれば、その回を返す）。写真＋テロップの画像があれば、ストーリーに投稿する印を付ける
+create or replace function public.start_event(p_key text, p_photo text default null) returns json
+  language plpgsql security definer set search_path = public as $$
+declare h hosts; e events := public._open_event();
+begin
+  select * into h from hosts where token = p_key and active;
+  if h.token is null then return json_build_object('status', 'badkey'); end if;
+  if p_photo is not null and p_photo !~ '^event_[0-9a-z_]+\.jpg$' then raise exception 'bad photo'; end if;
+  if e.id is not null then
+    if p_photo is not null and e.story_path is null then update events set story_path = p_photo where id = e.id; end if;
+    return json_build_object('status', 'already', 'id', e.id, 'started_at', e.started_at, 'opened_by', e.host_name);
+  end if;
+  insert into events(host, host_name, story_path) values (h.token, h.name, p_photo) returning * into e;
+  return json_build_object('status', 'ok', 'id', e.id, 'started_at', e.started_at);
+end $$;
+-- 終了QR：今開いている回を終える（どのキーの人でも終えられる）
+create or replace function public.end_event(p_key text) returns json
+  language plpgsql security definer set search_path = public as $$
+declare e events := public._open_event(); n int;
+begin
+  if not exists (select 1 from hosts where token = p_key and active) then return json_build_object('status', 'badkey'); end if;
+  if e.id is null then return json_build_object('status', 'none'); end if;
+  update events set ended_at = now() where id = e.id;
+  select count(*) into n from visits where visit_date = public._today() and arrived_at >= e.started_at;
+  return json_build_object('status', 'ok', 'started_at', e.started_at, 'ended_at', now(), 'joined', n);
+end $$;
+-- サーバー（Edge Function）だけが使う：開催のストーリーを「投稿中」にして、画像の場所を返す（キーが合う時だけ・1回だけ）
+create or replace function public.claim_event_story(p_id bigint, p_key text) returns text
+  language plpgsql security definer set search_path = public as $$
+declare path text;
+begin
+  update events set story_posting_at = now(), post_error = null
+   where id = p_id and host = p_key and story_path is not null and story_posted_at is null and story_posting_at is null
+     and exists (select 1 from hosts where token = p_key and active)
+   returning story_path into path;
+  return path;
+end $$;
+revoke all on function public.host_status(text), public.start_event(text, text), public.end_event(text) from public;
+grant execute on function public.host_status(text), public.start_event(text, text), public.end_event(text) to anon, authenticated;
+revoke all on function public.claim_event_story(bigint, text) from public, anon, authenticated;
+grant execute on function public.claim_event_story(bigint, text) to service_role;
+
+-- 誰でも読める：開催中か・今遊んでいる人数・開始時刻・よく開かれる曜日と時間帯（一人ひとりの記録は返さない）
+alter table settings drop column if exists next_event_at;
+alter table settings drop column if exists next_event_place;
+create or replace function public.public_status() returns json
+  language plpgsql stable security definer set search_path = public as $$
+declare e events := public._open_event(); often json;
+begin
+  -- この半年の開催を、曜日 × 時間帯（朝・昼・夕方・夜）で数えて、多い順に3つ
+  select json_agg(x order by n desc, dow) into often from (
+    select dow, slot, count(*) n from (
+      select extract(dow from started_at at time zone 'Asia/Tokyo')::int dow,
+             case when extract(hour from started_at at time zone 'Asia/Tokyo') < 12 then '朝'
+                  when extract(hour from started_at at time zone 'Asia/Tokyo') < 15 then '昼'
+                  when extract(hour from started_at at time zone 'Asia/Tokyo') < 18 then '夕方' else '夜' end slot
+        from events where started_at > now() - interval '180 days') t
+    group by dow, slot order by n desc, dow limit 3) x;
+  return json_build_object(
+    'open',       e.id is not null,
+    'started_at', e.started_at,
+    'playing',    case when e.id is null then 0 else
+                    (select count(*) from visits where visit_date = public._today() and arrived_at >= e.started_at and left_at is null) end,
+    'last_at',    (select max(started_at) from events),
+    'often',      coalesce(often, '[]'::json),
+    'now',        now());
+end $$;
 revoke all on function public.public_status() from public;
 grant execute on function public.public_status() to anon, authenticated;
 

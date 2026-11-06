@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#e82c34">
 <title>いまの鬼ごっこ｜立命館OIC 鬼ごっこサークル</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=10">
+<link rel="stylesheet" href="fonts/fonts.css?v=11">
 <style>
 /* 公園の掲示用：タブレットやスマホに表示して置いておく。30秒ごとに自動で更新 */
 :root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;
@@ -57,8 +57,8 @@ h1{margin:0;font-size:clamp(1.8rem,7vmin,5rem);font-weight:900;color:var(--red);
 </main>
 <script src="vendor/supabase.js"></script>
 <script src="vendor/qrcode.js"></script>
-<script src="config.js?v=20261107a"></script>
-<script src="visit.js?v=20261107a"></script>
+<script src="config.js?v=20261107b"></script>
+<script src="visit.js?v=20261107b"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
@@ -69,16 +69,17 @@ function clock() { $("clock").textContent = md(new Date()) + " " + hm(new Date()
 async function refresh() {
   try {
     const st = await window.Visit.status();
-    $("num").textContent = st.playing; $("numWrap").hidden = false;
-    if (st.playing > 0) {
-      $("nowLine").textContent = "今";
-      $("since").textContent = st.started_at ? `今日は ${hm(st.started_at)} から開催中` : "";
-      $("welcome").textContent = "途中参加、大歓迎！";
+    $("numWrap").hidden = !st.open;
+    if (st.open) {
+      $("num").textContent = st.playing;
+      $("nowLine").textContent = "開催中！ 今";
+      $("since").textContent = `今日は ${hm(st.started_at)} から開催中`;
+      $("welcome").textContent = "途中参加、大歓迎！"; $("welcome").hidden = false;
     } else {
-      $("nowLine").textContent = st.started_at ? `今日は ${hm(st.started_at)} から遊びました` : "今日はまだ始まっていません";
-      $("numWrap").hidden = true;
-      $("since").textContent = st.next_at ? `次回：${md(st.next_at)} ${hm(st.next_at)}〜　${st.next_place || ""}` : "次回は @onigo12345 でお知らせします";
-      $("welcome").textContent = "来た人から、はじめよう！";
+      const todayDone = st.last_at && md(st.last_at) === md(new Date());
+      $("nowLine").textContent = todayDone ? "今日の開催は終わりました" : "本日は未開催";
+      $("since").textContent = st.often?.length ? "よく開かれるのは：" + st.often.map((x) => `${WD[x.dow]}曜の${x.slot}`).join("・") : "開催したら @onigo12345 のストーリーでお知らせします";
+      $("welcome").hidden = true;
     }
   } catch (e) { console.warn(e); }
 }

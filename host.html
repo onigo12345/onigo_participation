@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#faf8f4">
+<meta name="robots" content="noindex">
+<title>開催キー｜立命館OIC 鬼ごっこサークル</title>
+<link rel="stylesheet" href="fonts/fonts.css?v=11">
+<style>
+:root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;
+  --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--paper);color:var(--ink);font-family:var(--font)}
+main{min-height:100dvh;display:flex;flex-direction:column;gap:16px;max-width:520px;margin:0 auto;
+  padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
+[hidden]{display:none!important}
+.eyebrow{font-size:.72rem;font-weight:700;letter-spacing:.12em}
+h1{margin:2vh 0 0;font-size:clamp(2.2rem,11vw,3.2rem);font-weight:900;line-height:1.15;color:var(--red)}
+h1.blue{color:var(--blue)}
+.lead{margin:0;font-size:1.05rem;font-weight:900;line-height:1.6}
+.box{background:#fff;border:1.5px solid var(--ink);padding:12px 14px;font-size:.84rem;line-height:1.75}
+.box b{display:block;font-size:.9rem;margin-bottom:2px}
+.box ul{margin:2px 0 0;padding-left:1.2em}
+.btn{display:block;width:100%;font:inherit;font-weight:900;font-size:1.1rem;padding:18px 12px;border:0;background:var(--red);color:#fff;cursor:pointer;text-align:center;line-height:1.4}
+.btn.blue{background:var(--blue)} .btn.ghost{background:transparent;color:var(--ink);border:2px solid var(--ink);font-size:1rem;padding:14px}
+.btn:disabled{opacity:.6}
+label.btn{cursor:pointer}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+#preview{width:100%;max-width:300px;aspect-ratio:9/16;margin:0 auto;display:block;box-shadow:0 4px 18px rgba(0,0,0,.15);background:#ddd}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.small{margin:0;font-size:.8rem;color:var(--muted);line-height:1.6;text-align:center}
+.small button{font:inherit;background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;cursor:pointer}
+.big{font-size:clamp(2rem,10vw,2.8rem);font-weight:900;color:var(--blue);font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">RITSUMEIKAN OIC&nbsp; ONIGOKKO CIRCLE ／ 開催キー</div>
+
+  <section id="v-load"><p class="lead">確認しています…</p></section>
+
+  <section id="v-bad" hidden>
+    <h1>このキーは<br>使えません</h1>
+    <p class="lead">止められたキーか、QRが読み取れていません。サークル代表に確認してください。</p>
+  </section>
+
+  <!-- 開始 -->
+  <section id="v-start" hidden style="display:grid;gap:16px">
+    <h1><span id="hostName"></span>さん、<br>開催しますか？</h1>
+    <div class="box">
+      <b>開催する人へ</b>
+      <ul>
+        <li>あなたが、この回の場の責任者です</li>
+        <li>18歳未満の人は、QRを使わずに「入れて」で参加してもらいます（記録しません）</li>
+        <li>公園で遊ぶ子どもたち・ほかの利用者の邪魔にならないようにしてください</li>
+        <li>終わる時は「終了QR」を読んでください（読み忘れても、日付が変わると自動で終わります）</li>
+      </ul>
+    </div>
+    <div class="box">
+      <b>開催のお知らせ（ストーリーに自動で投稿）</b>
+      今の公園の写真を1枚撮ってください。「鬼ごっこサークル活動中！誰でもこの指とーまれ！」の文字を入れて、@onigo12345 のストーリーに投稿します。<b style="display:inline;color:var(--red)">人の顔がわかる写真は撮らないでください</b>（風景・足元・手など）。
+    </div>
+    <label class="btn" for="photo">写真を撮る</label>
+    <input id="photo" class="vh" type="file" accept="image/*" capture="environment">
+    <p class="small"><button type="button" id="noPhoto">写真なしで開催する（投稿しない）</button></p>
+  </section>
+
+  <!-- 写真の確認 -->
+  <section id="v-preview" hidden style="display:grid;gap:14px">
+    <p class="lead">この画像でお知らせします</p>
+    <img id="preview" alt="開催のお知らせ画像">
+    <div class="row">
+      <label class="btn ghost" for="photo">撮りなおす</label>
+      <button class="btn" id="go" type="button">開催する</button>
+    </div>
+    <p class="small">「開催する」を押すと、すぐストーリーに投稿されます。</p>
+  </section>
+
+  <!-- 開催中 -->
+  <section id="v-open" hidden style="display:grid;gap:14px">
+    <h1 class="blue">開催中！</h1>
+    <p class="lead"><span class="big" id="openSince">–</span> から<br><span id="openBy"></span></p>
+    <p class="lead" id="postState"></p>
+    <div class="box">参加する人には、赤いQRを読んでもらうか、「入れて」で入ってもらってください。終わる時は<b style="display:inline">終了QR</b>を読んでください。</div>
+  </section>
+
+  <!-- 終了 -->
+  <section id="v-end" hidden style="display:grid;gap:16px">
+    <h1 class="blue">今の開催を<br>終わりますか？</h1>
+    <p class="lead" id="endInfo"></p>
+    <button class="btn blue" id="end" type="button">終了する</button>
+  </section>
+  <section id="v-ended" hidden style="display:grid;gap:14px">
+    <h1 class="blue">おつかれさま！</h1>
+    <p class="lead" id="endedInfo"></p>
+  </section>
+  <section id="v-none" hidden style="display:grid;gap:14px">
+    <h1 class="blue">今は開催して<br>いません</h1>
+    <p class="lead">開催する時は「開始QR」を読んでください。</p>
+  </section>
+</main>
+<div id="toast" hidden style="position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;font-weight:700;font-size:.88rem;max-width:90vw;text-align:center"></div>
+
+<script src="vendor/supabase.js"></script>
+<script src="config.js?v=20261107b"></script>
+<script>
+const CFG = window.APP_CONFIG || {};
+const sb = (CFG.SUPABASE_URL && window.supabase) ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+const $ = (id) => document.getElementById(id);
+const q = new URLSearchParams(location.search), KEY = (q.get("h") || "").toLowerCase(), ACT = q.get("a") === "end" ? "end" : "start";
+function view(id) { for (const s of document.querySelectorAll("main>section")) s.hidden = s.id !== id; }
+function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), 4000); }
+const hm = (iso) => { const j = new Date(new Date(iso).getTime() + 9 * 3600e3); return `${j.getUTCHours()}:${String(j.getUTCMinutes()).padStart(2, "0")}`; };
+async function rpc(name, args) { const { data, error } = await sb.rpc(name, args); if (error) throw error; return data; }
+
+let st = null;
+async function init() {
+  if (!sb || !/^[a-z0-9]{8,40}$/.test(KEY)) return view("v-bad");
+  try { st = await rpc("host_status", { p_key: KEY }); } catch (e) { console.warn(e); $("v-load").querySelector("p").textContent = "読み込めませんでした。電波の良い場所で開き直してください。"; return; }
+  if (!st.valid) return view("v-bad");
+  if (ACT === "end") {
+    if (!st.open) return view("v-none");
+    $("endInfo").textContent = `${hm(st.started_at)} から開催中（${st.opened_by || "?"}さんが開始）`;
+    return view("v-end");
+  }
+  if (st.open) return showOpen(st.started_at, st.opened_by, "");
+  $("hostName").textContent = st.name; view("v-start");
+}
+function showOpen(since, by, post) {
+  $("openSince").textContent = hm(since); $("openBy").textContent = by ? `${by}さんが開始` : "";
+  $("postState").textContent = post; view("v-open");
+}
+
+/* ---------- 写真にテロップを入れる（1080×1920・ストーリー用） ---------- */
+const W = 1080, H = 1920, C = { red: "#e82c34", blue: "#1c48c4", paper: "#faf8f4", ink: "#19161e" };
+let blob = null, startedAt = new Date();
+function fit(g, t, x, y, maxW, size, wt) { let s = size; do { g.font = `${wt} ${s}px "Noto Sans JP", sans-serif`; s -= 4; } while (g.measureText(t).width > maxW && s > 24); g.fillText(t, x, y); }
+async function compose(img) {
+  await Promise.race([document.fonts.load('900 90px "Noto Sans JP"', "鬼ごっこサークル活動中！誰でもこの指とーまれ@onigo12345立命館OIC岩倉公園0123456789:〜"), new Promise((r) => setTimeout(r, 4000))]).catch(() => {});
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+  const k = Math.max(W / img.width, H / img.height), w = img.width * k, h = img.height * k;   // 画面いっぱいに（はみ出しは切る）
+  g.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+  // 上のテロップ（Instagramの表示と重ならないよう、上端から少し下げる）
+  g.fillStyle = C.red; g.fillRect(0, 270, W, 190);
+  g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
+  fit(g, "鬼ごっこサークル活動中！", W / 2, 365, W - 100, 104, 900);
+  // 下のテロップ
+  g.fillStyle = C.paper; g.fillRect(0, 1390, W, 290);
+  g.fillStyle = C.red; fit(g, "誰でもこの指とーまれ！", W / 2, 1480, W - 100, 96, 900);
+  g.fillStyle = C.ink; fit(g, `${hm(startedAt.toISOString())}〜　立命館OIC 岩倉公園`, W / 2, 1578, W - 120, 46, 700);
+  g.fillStyle = C.blue; fit(g, CFG.INSTAGRAM || "@onigo12345", W / 2, 1640, W - 120, 38, 700);
+  return new Promise((r) => c.toBlob(r, "image/jpeg", 0.9));
+}
+$("photo").addEventListener("change", (e) => {
+  const f = e.target.files[0]; if (!f) return; e.target.value = "";
+  const img = new Image();
+  img.onload = async () => {
+    startedAt = new Date(); blob = await compose(img); URL.revokeObjectURL(img.src);
+    const old = $("preview").src; $("preview").src = URL.createObjectURL(blob); if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+    view("v-preview");
+  };
+  img.onerror = () => toast("写真を読み込めませんでした。もう一度撮ってください。");
+  img.src = URL.createObjectURL(f);
+});
+
+async function open(withPhoto) {
+  const btns = [$("go"), $("noPhoto")]; btns.forEach((b) => (b.disabled = true));
+  try {
+    let path = null;
+    if (withPhoto && blob) {
+      const rnd = [...crypto.getRandomValues(new Uint8Array(6))].map((x) => x.toString(36)).join("");
+      path = `event_${Date.now()}_${rnd}.jpg`;
+      const up = await sb.storage.from(CFG.BUCKET || "hands").upload(path, blob, { contentType: "image/jpeg" });
+      if (up.error) throw up.error;
+    }
+    const r = await rpc("start_event", { p_key: KEY, p_photo: path });
+    if (r.status === "badkey") return view("v-bad");
+    let post = path ? "ストーリーに投稿しています…" : "";
+    showOpen(r.started_at, r.opened_by || st.name, post);
+    if (path) {
+      const { data, error } = await sb.functions.invoke("instagram", { body: { eventStory: r.id, key: KEY } });
+      post = !error && data?.status === "ok" ? "ストーリーに投稿しました！"
+        : data?.status === "skip" ? "（この回のお知らせは、もう投稿されています）"
+        : "ストーリーに投稿できませんでした。管理ページからやり直せます。";
+      $("postState").textContent = post;
+    }
+  } catch (e) { console.warn(e); toast("開始できませんでした。電波の良い場所でもう一度押してください。"); }
+  finally { btns.forEach((b) => (b.disabled = false)); }
+}
+$("go").addEventListener("click", () => open(true));
+$("noPhoto").addEventListener("click", () => open(false));
+$("end").addEventListener("click", async () => {
+  $("end").disabled = true;
+  try {
+    const r = await rpc("end_event", { p_key: KEY });
+    if (r.status === "badkey") return view("v-bad");
+    if (r.status === "none") return view("v-none");
+    $("endedInfo").textContent = `${hm(r.started_at)}〜${hm(r.ended_at)}　QRで参加した人：${r.joined}人`;
+    view("v-ended");
+  } catch (e) { console.warn(e); toast("終了できませんでした。もう一度押してください。"); $("end").disabled = false; }
+});
+init();
+</script>
+</body>
+</html>

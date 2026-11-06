@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#faf8f4">
 <title>鬼ごっこサークル｜立命館OIC 岩倉公園</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=10">
+<link rel="stylesheet" href="fonts/fonts.css?v=11">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -35,6 +35,8 @@ h1{margin:clamp(6px,3vh,30px) 0 0;font-size:clamp(2.6rem,14vw,4.2rem);font-weigh
 .notice b{display:block;font-size:.84rem;margin-bottom:2px}
 .notice ul{margin:2px 0 6px;padding-left:1.2em}
 .notice a{color:var(--blue)}
+.closed{margin:0;background:#fff;border:2px solid var(--ink);padding:12px 14px;font-size:.9rem;font-weight:700;line-height:1.7}
+.closed a{color:var(--red);font-weight:900}
 .minor{margin:0;font-size:.82rem;line-height:1.6;font-weight:700}
 .minor b{color:var(--red)}
 
@@ -69,7 +71,7 @@ h1{margin:clamp(6px,3vh,30px) 0 0;font-size:clamp(2.6rem,14vw,4.2rem);font-weigh
     <h1>おにごっこ<br>サークル</h1>
     <div class="live" id="live" aria-live="polite">
       <p class="now" id="liveNow">今</p>
-      <span class="num"><span id="liveNum">…</span><small>人が遊んでいます</small></span>
+      <span class="num" id="liveNumWrap"><span id="liveNum">…</span><small>人が遊んでいます</small></span>
       <p class="sub" id="liveSub">途中参加、大歓迎！</p>
       <p class="when" id="liveWhen"></p>
     </div>
@@ -84,7 +86,8 @@ h1{margin:clamp(6px,3vh,30px) 0 0;font-size:clamp(2.6rem,14vw,4.2rem);font-weigh
       </ul>
       ボタンを押すと、来た時刻と参加番号を記録します（名前や連絡先は記録しません）。帰りに青いQRを読むと、遊んだ時間がわかり、手の画像がもらえます。記録はいつでも消せます（<a href="privacy.html">集めているデータ</a>）。このサークルは大学非公認の学生有志サークルです。
     </div>
-    <button class="btn" id="join" type="button">参加する<small>18歳以上です・上の注意書きに同意します</small></button>
+    <button class="btn" id="join" type="button" hidden>参加する<small>18歳以上です・上の注意書きに同意します</small></button>
+    <p class="closed" id="closed" hidden>今は開催していません。開催中にもう一度読み込んでね。<br>開催したら <a href="https://www.instagram.com/onigo12345/" target="_blank" rel="noopener">@onigo12345</a> のストーリーでお知らせします。</p>
     <p class="minor">18歳未満の人は、QRを使わずに<b>「入れて」</b>と声をかけてね。記録はしません。</p>
   </div>
 </section>
@@ -105,8 +108,8 @@ h1{margin:clamp(6px,3vh,30px) 0 0;font-size:clamp(2.6rem,14vw,4.2rem);font-weigh
 <div class="toast" id="toast" hidden></div>
 
 <script src="vendor/supabase.js"></script>
-<script src="config.js?v=20261107a"></script>
-<script src="visit.js?v=20261107a"></script>
+<script src="config.js?v=20261107b"></script>
+<script src="visit.js?v=20261107b"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 function show(id) { for (const s of document.querySelectorAll(".screen")) s.hidden = s.id !== id; }
@@ -115,22 +118,26 @@ const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" })
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 const jst = (iso) => new Date(new Date(iso).getTime() + 9 * 3600e3);
 const hm = (iso) => { const j = jst(iso); return `${j.getUTCHours()}:${String(j.getUTCMinutes()).padStart(2, "0")}`; };
-const md = (iso) => { const j = jst(iso); return `${j.getUTCMonth() + 1}月${j.getUTCDate()}日（${WD[j.getUTCDay()]}）`; };
 
-// 今の人数（読み込んだだけでは記録しない。30秒ごとに更新）
+// よく開かれる曜日と時間帯（例：火曜の夕方・木曜の夕方）
+const often = (list) => (list || []).map((x) => `${WD[x.dow]}曜の${x.slot}`).join("・");
+// 開催中か・今の人数（読み込んだだけでは記録しない。30秒ごとに更新）
 async function live() {
   try {
     const st = await window.Visit.status();
-    $("liveNum").textContent = st.playing;
-    if (st.playing > 0) {
-      $("liveNow").textContent = "今"; $("liveSub").textContent = "途中参加、大歓迎！";
-      $("liveWhen").textContent = st.started_at ? `今日は ${hm(st.started_at)} から遊んでいます` : "";
+    $("join").hidden = !st.open; $("closed").hidden = st.open;
+    $("liveNumWrap").hidden = !st.open;
+    if (st.open) {
+      $("liveNum").textContent = st.playing;
+      $("liveNow").textContent = "開催中！ 今"; $("liveSub").textContent = "途中参加、大歓迎！";
+      $("liveWhen").textContent = `今日は ${hm(st.started_at)} から遊んでいます`;
     } else {
-      $("liveNow").textContent = st.started_at ? "今日の鬼ごっこは、ひと休み中" : "今はまだ";
-      $("liveSub").textContent = "来た人から、はじめよう！";
-      $("liveWhen").textContent = st.next_at ? `次回：${md(st.next_at)} ${hm(st.next_at)}〜 ${st.next_place || ""}` : "";
+      const todayDone = st.last_at && jst(st.last_at).toISOString().slice(0, 10) === today();
+      $("liveNow").textContent = todayDone ? "今日の開催は終わりました" : "本日は未開催";
+      $("liveSub").textContent = "";
+      $("liveWhen").textContent = st.often?.length ? `よく開かれるのは：${often(st.often)}` : "";
     }
-  } catch (e) { console.warn(e); $("liveNum").textContent = "–"; }
+  } catch (e) { console.warn(e); $("liveNum").textContent = "–"; $("join").hidden = false; $("closed").hidden = true; }
 }
 live(); setInterval(() => { if (!document.hidden && !$("s-enter").hidden) live(); }, 30000);
 

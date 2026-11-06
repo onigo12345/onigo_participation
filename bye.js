@@ -9,7 +9,7 @@ const W = 1080, H = 1920;   // Instagramストーリー（9:16）
 const C = { red: "#e82c34", blue: "#1c48c4", purple: "#9a26d9", paper: "#faf8f4", ink: "#19161e" };
 const $ = (id) => document.getElementById(id);
 // 古いページ（ブラウザに残ったもの）と新しいプログラムが混ざった時は、一度だけ新しく読み直す
-if (!$("byeShoot") || !$("okFeed") || !$("gender") || !$("s-next")) {
+if (!$("byeShoot") || !$("okFeed") || !$("gender") || !$("oftenBox")) {
   let tried = false; try { tried = sessionStorage.getItem("onigokko_reload") === location.search; } catch {}
   if (!tried) {
     try { sessionStorage.setItem("onigokko_reload", location.search); } catch {}
@@ -174,24 +174,15 @@ $("sameNo").addEventListener("click", () => {
   toast("同じ名前の人がいるので、少し変えてね（例：たっくん2）", 4000);
 });
 
-/* ---------- 最後：次回の日時と、カレンダーへの追加 ---------- */
+/* ---------- 最後：つぎの鬼ごっこ（日にちは決めない。よく開かれる曜日と時間帯だけ出す） ---------- */
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
-const jst = (d) => new Date(d.getTime() + 9 * 3600e3);   // 日本時間の年月日・時刻を取り出す
-function nextLabel(d) { const j = jst(d); return `${j.getUTCMonth() + 1}月${j.getUTCDate()}日（${WD[j.getUTCDay()]}）${j.getUTCHours()}:${String(j.getUTCMinutes()).padStart(2, "0")}〜`; }
-const utc = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
 function showNext() {
   stopCamera(); show("s-next");
   window.Visit.status().then((st) => {
-    if (!st?.next_at || new Date(st.next_at) < new Date()) { $("nextNone").hidden = false; return; }
-    const start = new Date(st.next_at), end = new Date(start.getTime() + 2 * 3600e3), place = st.next_place || CFG.PLACE || "";
-    const title = "鬼ごっこサークル", details = `途中参加歓迎！ QRなしでも「入れて」で参加OK。\n${CFG.INSTAGRAM || ""}`;
-    $("nextWhen").textContent = nextLabel(start); $("nextWhere").textContent = place; $("nextBox").hidden = false;
-    $("calGoogle").href = "https://calendar.google.com/calendar/render?" + new URLSearchParams({ action: "TEMPLATE", text: title, dates: `${utc(start)}/${utc(end)}`, location: place, details });
-    const esc = (t) => t.replace(/[\\,;]/g, (m) => "\\" + m).replace(/\n/g, "\\n");
-    const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//onigo12345//JA", "BEGIN:VEVENT", `UID:${utc(start)}@onigo12345`, `DTSTAMP:${utc(new Date())}`,
-      `DTSTART:${utc(start)}`, `DTEND:${utc(end)}`, `SUMMARY:${esc(title)}`, `LOCATION:${esc(place)}`, `DESCRIPTION:${esc(details)}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
-    $("calIcs").href = "data:text/calendar;charset=utf-8," + encodeURIComponent(ics);
-  }).catch((e) => { console.warn("status", e); $("nextNone").hidden = false; });
+    if (!st?.often?.length) return;
+    $("oftenBox").innerHTML = "<small>よく開かれるのは</small>" + st.often.map((x) => `${WD[x.dow]}曜の${x.slot}`).join("・");
+    $("oftenBox").hidden = false;
+  }).catch((e) => console.warn("status", e));
 }
 // わたしの記録を消す（2回押しで確定）
 let armed = false;
