@@ -76,6 +76,11 @@
         const v = local.get(); if (v.days?.[today()]) { v.days[today()][what] = true; local.put(v); }
       } catch (e) { console.warn("mark", e); }
     },
+    // 帰る時のアンケート：今日なにをして遊んだか
+    async play(kinds, note) {
+      if (sb) return rpc("record_play", { p_device: deviceKey(), p_kinds: kinds, p_note: note || "" });
+      const v = local.get(); const d = v.days?.[today()]; if (d) { d.play = { kinds, note }; local.put(v); } return "ok";
+    },
     // 帰る時：滞在時間（分）と通算の回数を返す。来た時のQRを読んでいない端末は known:false
     async leave(feeling) {
       if (sb) {

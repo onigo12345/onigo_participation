@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>管理ページ｜つかまえた。</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=7">
+<link rel="stylesheet" href="fonts/fonts.css?v=9">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--orange:#f5821f;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;--line:#dedbe4;--panel:#fff;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -152,6 +152,9 @@ td.n,th.n{text-align:right}
         <div><h2>知ったきっかけ</h2><div id="byHeard"></div></div>
         <div><h2>来た時間帯</h2><div id="byHour"></div></div>
       </div>
+      <div><h2>みんなの遊び</h2><p class="hint">帰る時のアンケートで「今日なにして遊んだ？」に答えてもらった記録です（新しい順）。その場で生まれた遊びのメモも、ここに並びます。</p>
+        <div class="cols" style="margin-bottom:10px"><div><div id="byPlay"></div></div></div>
+        <div class="tablewrap"><table id="playLog"></table></div></div>
       <div><h2>QRの設置者ごと</h2><div class="tablewrap"><table id="byPlacer"></table></div></div>
     </div>
 
@@ -456,6 +459,9 @@ function renderData(){
   bars("byFaculty",count(came.map(p=>p.faculty||"未回答")));
   bars("byGrade",count(came.map(p=>p.grade||"未回答")));
   bars("byHeard",count(came.map(p=>p.heard_from||"未回答")));
+  bars("byPlay",count(visits.flatMap(v=>v.play_kinds||[])));
+  const plays=visits.filter(v=>(v.play_kinds&&v.play_kinds.length)||v.play_note).sort((x,y)=>(y.left_at||y.visit_date).localeCompare(x.left_at||x.visit_date));
+  $("playLog").innerHTML=`<tr><th>日付</th><th>参加番号</th><th>遊び</th><th>メモ（その場で生まれた遊び）</th></tr>`+(plays.map(v=>`<tr><td>${v.visit_date}</td><td>No.${pad(v.participant_no)}</td><td>${esc((v.play_kinds||[]).join("・"))}</td><td>${esc(v.play_note||"")}</td></tr>`).join("")||`<tr><td colspan="4">まだありません。</td></tr>`);
   const hours=new Map(); for(const v of visits) if(v.arrived_at){ const h=+new Date(v.arrived_at).toLocaleString("en-US",{...TZ,hour:"2-digit",hour12:false}); hours.set(h,(hours.get(h)||0)+1); }
   bars("byHour",[...hours.entries()].sort((a,b)=>a[0]-b[0]).map(([h,n])=>[h+"時台",n]));
 
@@ -469,9 +475,9 @@ function renderData(){
 $("csv").addEventListener("click",()=>{
   if(!D) return; const P=new Map(D.people.map(p=>[p.id,p])), S=new Map(D.spots.map(s=>[s.token,s.placer]));
   const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
-  const head=["日付","参加番号","ニックネーム","学部","回生","知ったきっかけ","設置者","来た時刻","帰った時刻","滞在(分)","画像","シェア","楽しさ"];
+  const head=["日付","参加番号","ニックネーム","学部","回生","知ったきっかけ","設置者","来た時刻","帰った時刻","滞在(分)","画像","シェア","楽しさ","遊び","遊びのメモ"];
   const lines=D.visits.map(v=>{ const p=P.get(v.participant_no)||{}; const m=mins(v);
-    return [v.visit_date,v.participant_no,p.nickname,p.faculty,p.grade,p.heard_from,v.spot?S.get(v.spot):"",hm(v.arrived_at),hm(v.left_at),m==null?"":Math.round(m),v.made_image?1:0,v.shared?1:0,v.feeling??""].map(q).join(","); });
+    return [v.visit_date,v.participant_no,p.nickname,p.faculty,p.grade,p.heard_from,v.spot?S.get(v.spot):"",hm(v.arrived_at),hm(v.left_at),m==null?"":Math.round(m),v.made_image?1:0,v.shared?1:0,v.feeling??"",(v.play_kinds||[]).join("・"),v.play_note||""].map(q).join(","); });
   saveBlob(new Blob(["﻿"+[head.map(q).join(","),...lines].join("\r\n")],{type:"text/csv"}),`visits_${new Date().toISOString().slice(0,10)}.csv`);
 });
 

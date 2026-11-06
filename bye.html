@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#faf8f4">
 <title>またね！｜立命館OIC 鬼ごっこサークル</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=7">
+<link rel="stylesheet" href="fonts/fonts.css?v=9">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -24,7 +24,7 @@ h1 .who{display:block;white-space:nowrap;overflow:hidden;color:var(--ink)}
 .stat b{display:block;font-size:clamp(2.6rem,14vw,3.6rem);font-weight:900;line-height:1;color:var(--red);font-variant-numeric:tabular-nums}
 .stat b small{font-size:.4em;color:var(--ink);margin-left:2px}
 .stat span{font-size:.82rem;font-weight:700}
-.feel{display:grid;gap:10px}
+.feel{display:grid;gap:10px;background:rgba(250,248,244,.94);margin:0 -10px;padding:8px 10px}
 .feel p{margin:0;font-weight:900}
 .faces{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .faces button{font:inherit;font-weight:700;font-size:.85rem;padding:12px 4px;border:2px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer;line-height:1.4}
@@ -36,6 +36,15 @@ h1 .who{display:block;white-space:nowrap;overflow:hidden;color:var(--ink)}
 .foot{margin:0;font-size:.78rem;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;color:var(--muted);background:rgba(250,248,244,.9);padding:6px 8px;margin:0 -8px;width:fit-content}
 .foot a{color:var(--muted)}
 .foot button{font:inherit;font-size:.78rem;background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;cursor:pointer}
+.play{display:grid;gap:10px;padding-top:4px}
+.play p{margin:0;font-weight:900}
+.kinds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kinds button{font:inherit;font-weight:700;font-size:.9rem;padding:12px 4px;border:2px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer}
+.kinds button[aria-pressed="true"]{background:var(--red);border-color:var(--red);color:#fff}
+.play textarea{font:inherit;font-size:16px;padding:10px;border:2px solid var(--ink);border-radius:0;min-height:5.5em;resize:vertical;width:100%}
+.play small{color:var(--muted);font-size:.74rem;line-height:1.6}
+.play .send{font:inherit;font-weight:900;font-size:1rem;padding:13px;border:0;background:var(--ink);color:#fff;cursor:pointer}
+.play .send:disabled{opacity:.5}
 .msg{background:#fff;border:1.5px solid var(--ink);padding:12px;font-size:.86rem;line-height:1.7}
 </style>
 </head>
@@ -63,14 +72,27 @@ h1 .who{display:block;white-space:nowrap;overflow:hidden;color:var(--ink)}
       <button type="button" data-v="2" aria-pressed="false"><span>😆</span>たのしい</button>
       <button type="button" data-v="3" aria-pressed="false"><span>🔥</span>最高！</button>
     </div>
+    <div class="play" id="play">
+      <p>今日はなにして遊んだ？（いくつでも・任意）</p>
+      <div class="kinds" role="group" aria-label="遊んだこと">
+        <button type="button" aria-pressed="false">鬼ごっこ</button>
+        <button type="button" aria-pressed="false">ケイドロ</button>
+        <button type="button" aria-pressed="false">その他</button>
+      </div>
+      <div id="playOther" hidden style="display:grid;gap:6px">
+        <textarea id="playNote" maxlength="200" placeholder="こんなルールで遊んだよ／鬼ごっこじゃないけど、こんなことして遊んだよ"></textarea>
+        <small>人の名前や連絡先は書かないでね。サークルの記録として、管理者だけが見ます。</small>
+      </div>
+      <button class="send" id="playSend" type="button" disabled>送る</button>
+    </div>
     <p class="next">次の鬼ごっこは <a id="ig" href="https://www.instagram.com/onigo12345/" target="_blank" rel="noopener">@onigo12345</a> でお知らせします。</p>
     <p class="foot"><span>大学非公認の学生有志サークル</span><a href="privacy.html">集めているデータ</a>　<button type="button" id="forget">わたしの記録を消す</button></p>
   </div>
 </main>
 
 <script src="vendor/supabase.js"></script>
-<script src="config.js?v=20261105l"></script>
-<script src="visit.js?v=20261105l"></script>
+<script src="config.js?v=20261106p"></script>
+<script src="visit.js?v=20261106p"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 // 「〇〇、またね！」。長い名前は1行に収まるまで文字を小さくする
@@ -104,6 +126,27 @@ async function leave(feeling) {
   if (r.minutes == null) $("stayBox").hidden = true;
   $("count").innerHTML = `${r.visits}<small>回目</small>`;
 })();
+// 今日なにをして遊んだか（いくつでも選べる。「その他」は自由に書ける）
+const kindBtns = [...document.querySelectorAll(".kinds button")];
+const picked = () => kindBtns.filter((x) => x.getAttribute("aria-pressed") === "true").map((x) => x.textContent.trim());
+function playState() {
+  const other = picked().includes("その他");
+  $("playOther").hidden = !other; $("playOther").style.display = other ? "grid" : "none";
+  $("playSend").disabled = !picked().length; $("playSend").textContent = "送る";
+}
+kindBtns.forEach((x) => x.addEventListener("click", () => { x.setAttribute("aria-pressed", x.getAttribute("aria-pressed") !== "true"); playState(); }));
+$("playSend").addEventListener("click", async () => {
+  const kinds = picked(); if (!kinds.length) return;
+  const note = kinds.includes("その他") ? $("playNote").value.trim() : "";
+  $("playSend").disabled = true;
+  try {
+    const r = await window.Visit.play(kinds, note);
+    if (r !== "ok") throw new Error(r);
+    $("playSend").textContent = "ありがとう！記録したよ";
+  } catch (e) { console.warn(e); $("playSend").disabled = false; $("playSend").textContent = "送れませんでした。もう一度押してね"; }
+});
+playState();
+
 // わたしの記録を消す（2回押しで確定）
 let armed = false;
 $("forget").addEventListener("click", async () => {

@@ -215,6 +215,23 @@ begin
     'minutes', case when v.arrived_at is null then null else round(extract(epoch from (v.left_at - v.arrived_at)) / 60) end);
 end $$;
 
+-- 帰る時のアンケート：今日なにをして遊んだか（任意）。その場で生まれた遊びを記録する
+alter table visits add column if not exists play_kinds text[];   -- 鬼ごっこ／ケイドロ／その他
+alter table visits add column if not exists play_note  text;     -- その他の時の自由記述（200字まで）
+create or replace function public.record_play(p_device text, p_kinds text[], p_note text) returns text
+  language plpgsql security definer set search_path = public as $$
+declare pid bigint := public._me(p_device); ks text[];
+begin
+  if pid is null then return 'unknown'; end if;
+  select array_agg(distinct k) into ks from unnest(coalesce(p_kinds, '{}')) k where k in ('鬼ごっこ', 'ケイドロ', 'その他');
+  update visits set play_kinds = ks, play_note = nullif(left(trim(coalesce(p_note, '')), 200), '')
+   where participant_no = pid and visit_date = public._today();
+  if not found then return 'novisit'; end if;
+  return 'ok';
+end $$;
+revoke all on function public.record_play(text, text[], text) from public;
+grant execute on function public.record_play(text, text[], text) to anon, authenticated;
+
 -- 自分の記録をすべて消す（アンケート・来場・画像）。画像のファイルは、管理ページを開いた時に自動で消える
 drop function if exists public.forget_me(text);
 create or replace function public.forget_me(p_device text) returns json
