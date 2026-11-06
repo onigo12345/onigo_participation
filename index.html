@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#faf8f4">
 <title>つかまえた。｜立命館OIC 鬼ごっこサークル</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=7">
+<link rel="stylesheet" href="fonts/fonts.css?v=8">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -94,7 +94,26 @@ input[role="switch"]:focus-visible{outline:3px solid var(--blue);outline-offset:
 .visit-note{margin:0;font-weight:900;color:var(--blue)}
 #s-survey{overflow-y:auto;gap:12px}
 #s-survey>*{flex-shrink:0}
-.survey{display:grid;gap:14px;max-width:440px;width:100%;margin:0 auto}
+#s-notice{justify-content:space-between;gap:16px;overflow-y:auto}
+.notice-body{display:grid;gap:14px;margin-top:clamp(8px,4vh,40px)}
+.notice-h{margin:0;font-size:clamp(1.6rem,8vw,2.2rem);font-weight:900;color:var(--red)}
+.notice-big{font-size:.86rem;line-height:1.8;padding:14px 16px}
+.notice-big b{font-size:.95rem}
+#s-survey{justify-content:space-between;gap:16px}
+.survey{flex:1;display:flex;flex-direction:column;justify-content:center;max-width:440px;width:100%;margin:0 auto}
+/* 質問は1つずつ。ゆっくり現れて、ゆっくり消える */
+.q{display:grid;gap:14px;transition:opacity .7s ease}
+.q.fade{opacity:0}
+.q h2{margin:0 0 6px;font-size:clamp(1.8rem,9vw,2.4rem)!important;font-weight:900;color:var(--red)}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.choices.one{grid-template-columns:1fr}
+.choices button{font:inherit;font-weight:700;font-size:1rem;padding:14px 10px;border:2px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer;transition:background .2s,color .2s}
+.choices button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.survey-foot{display:flex;justify-content:space-between;max-width:440px;width:100%;margin:0 auto}
+.linkbtn{font:inherit;font-size:.85rem;background:none;border:0;padding:6px 0;color:var(--muted);text-decoration:underline;cursor:pointer}
+#s-survey .privacy{max-width:440px;margin:0 auto}
+@media (prefers-reduced-motion:reduce){.q{transition:none}}
+.survey-old{display:grid;gap:14px;max-width:440px;width:100%;margin:0 auto}
 .survey h2{margin:0;font-size:1.5rem;font-weight:900;color:var(--red)}
 .survey label{display:grid;gap:6px;font-weight:700;font-size:.92rem}
 .survey select,.survey input{font:inherit;font-size:16px;padding:12px;border:2px solid var(--ink);background:#fff;color:var(--ink);border-radius:0;width:100%;-webkit-appearance:none;appearance:none}
@@ -174,22 +193,31 @@ input[role="switch"]:focus-visible{outline:3px solid var(--blue);outline-offset:
     <p class="visit-note" id="visitNote" hidden></p>
   </div>
   <div class="welcome-foot">
-    <div class="notice" role="note">
+    <button class="btn" id="toNotice" type="button">つぎへ</button>
+  </div>
+</section>
+
+<!-- 1.2 ご注意 -->
+<section id="s-notice" class="screen" hidden>
+  <div class="eyebrow">RITSUMEIKAN OIC&nbsp; ONIGOKKO CIRCLE</div>
+  <div class="notice-body">
+    <h2 class="notice-h">はじめる前に</h2>
+    <div class="notice notice-big" role="note">
       <b>ご注意</b>
       撮影した手の画像は、最後の画面のスイッチ（最初はオン）で「使ってよい」になっている時だけ、鬼ごっこサークル公式Instagram（@onigo12345）のストーリーや投稿に使います。写るのは手だけで、名前は載せません。また、来た時刻・帰った時刻と、初回の簡単なアンケートをサークル運営の参考にします。同じ人の見分けには、このスマホのブラウザに保存するランダムな目印（名前や連絡先は含みません）を使います。記録は帰る時のページからいつでも消せます（くわしくは<a href="privacy.html">集めているデータ</a>）。手をそのまま見せたくない人は、撮影のあとで「ふんわり」「強くぼかす」を選べます。掲載をやめてほしい時は、DMでご連絡ください。
       <span style="display:block;margin-top:4px">※このサークルは、立命館大学の公認団体ではなく、学生有志によるサークルです。</span>
       <span class="camnote">※検索アプリ（Google・Yahoo!など）やブラウザアプリの設定によっては、カメラが起動しないことがあります。その時はSafariやChromeで開いてください。</span>
     </div>
-    <button class="btn" id="toCamera" type="button">同意して、すすむ</button>
   </div>
+  <button class="btn" id="toCamera" type="button">同意して、すすむ</button>
 </section>
 
 <!-- 1.5 アンケート（初めての人だけ） -->
 <section id="s-survey" class="screen" hidden>
-  <div class="eyebrow">はじめての人だけ・10秒</div>
+  <div class="eyebrow">はじめての人だけ・<span id="qStep">1</span>/5</div>
   <form id="survey" class="survey" novalidate>
-    <h2>ちょっとだけ教えて！</h2>
-    <label>学部 <span class="req">必須</span>
+    <div class="q" data-key="faculty" data-req="1">
+      <h2>学部は？</h2>
       <select id="faculty" required>
         <option value="">選んでください</option>
         <optgroup label="OIC">
@@ -205,23 +233,38 @@ input[role="switch"]:focus-visible{outline:3px solid var(--blue);outline-offset:
           <option>大学院</option><option>ほかの大学</option><option>社会人・その他</option>
         </optgroup>
       </select>
-    </label>
-    <label>ニックネーム <span class="req">必須</span>
-      <input id="nickname" maxlength="20" autocomplete="off" placeholder="例：たっくん（本名はNG）">
-      <small>本名は入れないでね。次に来た時も同じ名前で</small>
-    </label>
-    <div class="row2">
-      <label>回生 <span class="opt">任意</span>
-        <select id="grade"><option value="">—</option><option>1回生</option><option>2回生</option><option>3回生</option><option>4回生</option><option>院生</option><option>その他</option></select>
-      </label>
-      <label>なんで参加した？ <span class="opt">任意</span>
-        <select id="heard"><option value="">—</option><option>Instagram</option><option>友達のストーリー</option><option>友達に誘われた</option><option>公園で見かけた</option><option>以前も参加したことがあるから</option><option>サークル運営者</option><option>その他</option></select>
-      </label>
+      <button class="btn" type="button" data-next>つぎへ</button>
     </div>
-    <p class="privacy">集めるのは、学部・ニックネーム・回生・知ったきっかけと、来た時刻・帰った時刻だけです。サークルの運営と、もっと遊びやすくするための参考に使い、外には公開しません。<a href="privacy.html">くわしく</a></p>
-    <button class="btn" id="surveyGo" type="submit">つぎへ</button>
-    <button class="btn ghost" id="surveySkip" type="button">あとで答える</button>
+    <div class="q" data-key="nickname" data-req="1" hidden>
+      <h2>ニックネームは？</h2>
+      <input id="nickname" maxlength="20" autocomplete="off" enterkeyhint="next" placeholder="例：たっくん（本名はNG）">
+      <small>本名は入れないでね。次に来た時も同じ名前で</small>
+      <button class="btn" type="button" data-next>つぎへ</button>
+    </div>
+    <div class="q" data-key="grade" hidden>
+      <h2>何回生？</h2>
+      <input type="hidden" id="grade">
+      <div class="choices" data-for="grade"><button type="button">1回生</button><button type="button">2回生</button><button type="button">3回生</button><button type="button">4回生</button><button type="button">院生</button><button type="button">その他</button></div>
+      <button class="btn ghost" type="button" data-skip>答えない</button>
+    </div>
+    <div class="q" data-key="gender" hidden>
+      <h2>性別は？</h2>
+      <input type="hidden" id="gender">
+      <div class="choices" data-for="gender"><button type="button">男性</button><button type="button">女性</button><button type="button">その他</button></div>
+      <button class="btn ghost" type="button" data-skip>答えない</button>
+    </div>
+    <div class="q" data-key="heard" hidden>
+      <h2>なんで参加した？</h2>
+      <input type="hidden" id="heard">
+      <div class="choices one" data-for="heard"><button type="button">Instagram</button><button type="button">友達のストーリー</button><button type="button">友達に誘われた</button><button type="button">公園で見かけた</button><button type="button">以前も参加したことがあるから</button><button type="button">サークル運営者</button><button type="button">その他</button></div>
+      <button class="btn ghost" type="button" data-skip>答えない</button>
+    </div>
   </form>
+  <div class="survey-foot">
+    <button class="linkbtn" id="surveyBack" type="button" hidden>← もどる</button>
+    <button class="linkbtn" id="surveySkip" type="button">あとで答える</button>
+  </div>
+  <p class="privacy">答えはサークルの運営の参考にだけ使い、外には公開しません。学部とニックネーム以外は答えなくて大丈夫です。<a href="privacy.html">くわしく</a></p>
 </section>
 
 <!-- 1.7 公園でのお願い（1枚ずつ） -->
@@ -334,8 +377,8 @@ input[role="switch"]:focus-visible{outline:3px solid var(--blue);outline-offset:
 <div class="toast" id="toast" hidden></div>
 
 <script src="vendor/supabase.js"></script>
-<script src="config.js?v=20261105l"></script>
-<script src="visit.js?v=20261105l"></script>
-<script type="module" src="app.js?v=20261105l"></script>
+<script src="config.js?v=20261106a"></script>
+<script src="visit.js?v=20261106a"></script>
+<script type="module" src="app.js?v=20261106a"></script>
 </body>
 </html>

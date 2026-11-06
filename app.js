@@ -8,7 +8,7 @@ const W = 1080, H = 1920;   // Instagramストーリー（9:16）
 const C = { red: "#e82c34", blue: "#1c48c4", purple: "#9a26d9", paper: "#faf8f4", ink: "#19161e" };
 const $ = (id) => document.getElementById(id);
 // 古いページ（ブラウザに残ったもの）と新しいプログラムが混ざった時は、一度だけ新しく読み直す
-if (!$("ruleNext") || !$("chooseSkip") || !$("doneB") || !$("okFeed")) {
+if (!$("ruleNext") || !$("chooseSkip") || !$("doneB") || !$("okFeed") || !$("toNotice") || !$("gender")) {
   let tried = false; try { tried = sessionStorage.getItem("onigokko_reload") === location.search; } catch {}
   if (!tried) {
     try { sessionStorage.setItem("onigokko_reload", location.search); } catch {}
@@ -71,33 +71,78 @@ function showNumber() {
 }
 showNumber();
 
-/* ---------- アンケート（初めての人だけ・1画面） ---------- */
+/* ---------- ありがとう → ご注意 → アンケート（初めての人だけ・1問ずつ） ---------- */
+$("toNotice").addEventListener("click", () => show("s-notice"));
 async function goNext() {
   try { await withTimeout(joinPromise || getNumber(), 8000); } catch {}
-  if (hasProfile) startRules(); else show("s-survey");
+  if (hasProfile) startRules(); else { startSurvey(); }
 }
-$("survey").addEventListener("submit", async (e) => {
-  e.preventDefault();
+const QS = [...document.querySelectorAll("#survey .q")];
+const Q_FADE = 700;   // 質問がゆっくり消えて、ゆっくり現れる（ミリ秒）
+let qi = 0, qBusy = false;
+function startSurvey() {
+  QS.forEach((q, i) => { q.hidden = i !== 0; q.classList.remove("fade"); });
+  qi = 0; stepLabel(); show("s-survey");
+  fadeIn(QS[0]);
+}
+function stepLabel() { $("qStep").textContent = qi + 1; $("surveyBack").hidden = qi === 0; }
+function fadeIn(q) {
+  q.classList.add("fade"); q.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => q.classList.remove("fade")));
+}
+function goQ(next) {
+  if (qBusy || next === qi || next < 0 || next >= QS.length) return;
+  qBusy = true;
+  const cur = QS[qi]; cur.classList.add("fade");
+  setTimeout(() => {
+    cur.hidden = true; qi = next; stepLabel(); fadeIn(QS[qi]); qBusy = false;
+    const inp = QS[qi].querySelector("input:not([type=hidden])"); if (inp) setTimeout(() => inp.focus(), Q_FADE);
+  }, Q_FADE);
+}
+// 今の質問に答えたら次へ。最後の質問なら送る
+function answered() {
+  const q = QS[qi], key = q.dataset.key;
+  if (q.dataset.req) {
+    const v = key === "nickname" ? $("nickname").value.trim() : $(key).value;
+    if (!v) { toast(key === "faculty" ? "学部を選んでね" : "ニックネームを入れてね"); return; }
+  }
+  if (qi < QS.length - 1) goQ(qi + 1); else submitSurvey();
+}
+$("survey").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b || qBusy) return;
+  if (b.hasAttribute("data-next")) return answered();
+  if (b.hasAttribute("data-skip")) { const k = QS[qi].dataset.key; $(k).value = ""; QS[qi].querySelectorAll(".choices button").forEach((x) => x.classList.remove("on")); return answered(); }
+  const box = b.closest(".choices");
+  if (box) {   // 選んだら、少し見せてから次の質問へ
+    box.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+    $(box.dataset.for).value = b.textContent.trim();
+    setTimeout(answered, 350);
+  }
+});
+$("survey").addEventListener("submit", (e) => { e.preventDefault(); answered(); });
+$("nickname").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); answered(); } });
+$("surveyBack").addEventListener("click", () => goQ(qi - 1));
+async function submitSurvey() {
   const nick = $("nickname").value.trim();
-  if (!$("faculty").value) { toast("学部を選んでね"); return; }
-  if (!nick) { toast("ニックネームを入れてね"); return; }
-  const btn = $("surveyGo"); btn.disabled = true;
+  if (!$("faculty").value) { toast("学部を選んでね"); return goQ(0); }
+  if (!nick) { toast("ニックネームを入れてね"); return goQ(1); }
+  qBusy = true;
   try {
-    const r = await window.Visit.saveProfile({ faculty: $("faculty").value, grade: $("grade").value, nickname: nick.slice(0, 20), heard: $("heard").value });
+    const r = await window.Visit.saveProfile({ faculty: $("faculty").value, grade: $("grade").value, nickname: nick.slice(0, 20), heard: $("heard").value, gender: $("gender").value });
     if (r && r.status === "exists") {   // 同じ学部・同じニックネームの人がいる → 本人か確認
       $("sameName").textContent = `${nick}さん（${$("faculty").value}）`;
       $("same").hidden = false; return;
     }
     hasProfile = true; startRules();
   } catch (err) { console.warn(err); toast("送れませんでした。電波の良い場所でもう一度押してね。", 3500); }
-  finally { btn.disabled = false; }
-});
+  finally { qBusy = false; }
+}
 // 「前にも来た？」の確認
 $("sameYes").addEventListener("click", async () => {
   $("sameYes").disabled = true;
   try {
     const r = await window.Visit.relink({ faculty: $("faculty").value, nickname: $("nickname").value.trim() });
-    if (r.status === "busy") { $("same").hidden = true; toast("その名前の人は、今日はもう参加しています。名前を少し変えてね", 4000); $("nickname").focus(); return; }
+    if (r.status === "busy") { $("same").hidden = true; toast("その名前の人は、今日はもう参加しています。名前を少し変えてね", 4000); goQ(1); return; }
     if (r.status !== "ok") throw new Error(r.status);
     myNo = r.no; $("countNum").textContent = r.no; hasProfile = true; $("same").hidden = true;
     toast("おかえり！", 2400); startRules();
@@ -105,7 +150,7 @@ $("sameYes").addEventListener("click", async () => {
   finally { $("sameYes").disabled = false; }
 });
 $("sameNo").addEventListener("click", () => {
-  $("same").hidden = true; $("nickname").focus(); $("nickname").select();
+  $("same").hidden = true; goQ(1); setTimeout(() => { $("nickname").focus(); $("nickname").select(); }, Q_FADE * 2);
   toast("同じ名前の人がいるので、少し変えてね（例：たっくん2）", 4000);
 });
 $("surveySkip").addEventListener("click", () => startRules());
