@@ -81,7 +81,7 @@
     // 自分の記録をすべて消す（この端末の目印も消す）
     async forget() {
       if (sb && ls.get("onigokko_device")) { const r = await rpc("forget_me", { p_device: deviceKey() }); if (r.status !== "ok" && r.status !== "none") throw new Error(r.status); }
-      for (const k of ["onigokko_device", "onigokko_spot", "onigokko_local", "onigokko_no", "onigokko_demo_counter"]) { try { localStorage.removeItem(k); } catch {} }
+      for (const k of ["onigokko_device", "onigokko_spot", "onigokko_local", "onigokko_no", "onigokko_demo_counter", "onigokko_joined"]) { try { localStorage.removeItem(k); } catch {} }
     },
     async mark(what) {
       try {

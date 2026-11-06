@@ -53,6 +53,7 @@ create table if not exists visits (
   feeling       smallint check (feeling between 1 and 3)
 );
 create index if not exists visits_date on visits(visit_date);
+alter table visits add column if not exists joined_at timestamptz;   -- その日いちばん最近「参加する」を押した時刻（今の人数を数えるため）
 create index if not exists visits_participant on visits(participant_no);
 create unique index if not exists visits_one_per_day on visits(participant_no, visit_date);
 
@@ -119,9 +120,11 @@ begin
   end if;
   update participants set adult_at = coalesce(adult_at, now()) where id = pid;
   select token into s from spots where token = p_spot and active;
-  insert into visits(participant_no, spot, visit_date, arrived_at) values (pid, s, today, now())
+  -- 同じ日にもう一度参加した時（帰ったあとに戻ってきた・別の開催）は、遊んでいる人として数え直す
+  insert into visits(participant_no, spot, visit_date, arrived_at, joined_at) values (pid, s, today, now(), now())
     on conflict (participant_no, visit_date) do update
-      set arrived_at = coalesce(visits.arrived_at, excluded.arrived_at), spot = coalesce(visits.spot, excluded.spot);
+      set arrived_at = coalesce(visits.arrived_at, excluded.arrived_at), spot = coalesce(visits.spot, excluded.spot),
+          joined_at = now(), left_at = null;
   select count(*) into n from visits where participant_no = pid;
   -- 保存期間：2年より前の来場と、来場の記録がなくなった参加者を消す（ときどき）
   if random() < 0.05 then
@@ -547,7 +550,7 @@ begin
   if p_photo is not null and p_photo !~ '^event_[0-9a-z_]+\.jpg$' then raise exception 'bad photo'; end if;
   if e.id is null then return json_build_object('status', 'none'); end if;
   update events set ended_at = now(), end_story_path = p_photo where id = e.id;
-  select count(*) into n from visits where visit_date = public._today() and arrived_at >= e.started_at;
+  select count(*) into n from visits where visit_date = public._today() and coalesce(joined_at, arrived_at) >= e.started_at;
   return json_build_object('status', 'ok', 'id', e.id, 'started_at', e.started_at, 'ended_at', now(), 'joined', n);
 end $$;
 -- サーバー（Edge Function）だけが使う：開催（start）・終了（end）のストーリーを「投稿中」にして、画像の場所を返す
@@ -594,7 +597,7 @@ begin
     'open',       e.id is not null,
     'started_at', e.started_at,
     'playing',    case when e.id is null then 0 else
-                    (select count(*) from visits where visit_date = public._today() and arrived_at >= e.started_at and left_at is null) end,
+                    (select count(*) from visits where visit_date = public._today() and coalesce(joined_at, arrived_at) >= e.started_at and left_at is null) end,
     'last_at',    (select max(started_at) from events),
     'often',      coalesce(often, '[]'::json),
     'now',        now());

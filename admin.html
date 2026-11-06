@@ -247,6 +247,7 @@ async function load(){
   $("sPeople").textContent=people.count??"–";
   $("sHands").textContent=latest.length;
   $("sShape").textContent=latest.filter(r=>r.look==="soft"||r.look==="blur").length;
+  $("waitN").textContent=latest.filter(isWaiting).length;
   // 表示用の一時URL（1時間有効）
   const paths=latest.flatMap(r=>[r.image_path,r.story_path].filter(Boolean));
   urls={};

@@ -61,7 +61,7 @@ function showName(name) {   // 「〇〇、またね！」。長い名前は1行
   fit(); document.fonts?.ready.then(fit); addEventListener("resize", fit);
 }
 const fmt = (m) => m == null ? "未記録" : m >= 60 ? `${Math.floor(m / 60)}<small>時間</small>${m % 60}<small>分</small>` : `${m}<small>分</small>`;
-(async () => {
+const leaving = (async () => {
   let r = null;
   for (let i = 0; i < 3 && !r; i++) { try { r = await window.Visit.leave(); } catch (e) { console.warn(e); await sleep(800 * (i + 1)); } }
   if (!r) { $("byeMsg").hidden = false; $("byeMsg").textContent = "記録できませんでした。電波の良い場所で、もう一度QRを読み込んでね。"; $("byeSkip").textContent = "つぎへ"; $("byeShoot").hidden = true; return; }
@@ -407,6 +407,7 @@ $("filters").addEventListener("click", async (e) => {
 async function generate(photo) {
   show("s-loading"); $("loadingText").textContent = "画像をつくっています…";
   try {
+    if (!myNo) { try { await withTimeout(leaving, 10000); } catch {} }   // 帰りの記録が終わる前に撮った時は、終わるまで待つ
     if (!myNo) throw new Error("count");
     const res = await withTimeout(detectHands(photo), 30000);
     if (!res.landmarks?.length) throw new Error("nohand");

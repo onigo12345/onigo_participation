@@ -93,6 +93,7 @@ async function postEventStory(id: number, key: string, kind: "start" | "end" = "
     const media = await publish(await signedUrl(path as string), "story");
     const [at, mid] = Object.keys(done);
     await db.from("events").update({ [at]: new Date().toISOString(), [mid]: media, post_error: null }).eq("id", id);
+    await db.storage.from(BUCKET).remove([path as string]);   // 投稿し終わった写真は残さない（公園の人が写っているかもしれないため）
     return { status: "ok", media };
   } catch (e) {
     await db.from("events").update({ post_error: (kind === "end" ? "終了：" : "開始：") + msg(e) }).eq("id", id);
