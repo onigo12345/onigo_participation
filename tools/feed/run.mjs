@@ -1,6 +1,6 @@
 // フィードの自動投稿（GitHub Actions で15分ごとに動く）
 //
-// 1. 本人が「投稿にも使ってよい」を選んだ手を、届いた順に集める（1人1回まで）
+// 1. 本人が「投稿にも使ってよい」を選び、運営者が承認した手を、届いた順に集める（1人1回まで）
 // 2. 1列ぶん（1列目は創始者の手1つ、2列目からは3人分）たまったら、公式投稿メーカーと同じ柄で3枚を描く
 // 3. 画像を保存して「投稿待ち」の列を作り、Supabase の Edge Function に投稿を頼む（右 → 真ん中 → 左の順）
 //
@@ -44,7 +44,7 @@ const pattern = state?.pattern || JSON.parse(fs.readFileSync(path.join(ROOT, "to
 
 // ---------- 使ってよい手を、届いた順に（1人1回・本人が最後に選んだ見え方） ----------
 let sq = db.from("submissions").select("id, participant_no, image_path, feed_ok, feed_row, created_at").order("created_at", { ascending: true }).limit(5000);
-if (!DRY) sq = sq.eq("feed_ok", true);   // 試運転では同意に関係なく手を使う（描くだけで、投稿も保存もしない）
+if (!DRY) sq = sq.eq("feed_ok", true).not("approved_at", "is", null);   // 本人が選び、運営者が承認したものだけ。試運転では同意に関係なく手を使う（描くだけで、投稿も保存もしない）
 const subs = must(await sq, "submissions");
 const used = new Set(subs.filter((s) => s.feed_row != null).map((s) => s.participant_no));
 const latest = new Map();

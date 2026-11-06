@@ -11,7 +11,7 @@ const open = await get("feed_rows?status=neq.posted&select=row_no,status");
 if (open.length) say(open.some((r) => r.status === "ready"), `投稿し終わっていない列があります：${JSON.stringify(open)}`);
 const [fs_] = await get("feed_state?id=eq.1&select=next_row");
 const row = fs_?.next_row || 1;
-const subs = await get("submissions?feed_ok=eq.true&select=participant_no,feed_row&limit=5000");
+const subs = await get("submissions?feed_ok=eq.true&approved_at=not.is.null&select=participant_no,feed_row&limit=5000");
 const used = new Set(subs.filter((s) => s.feed_row != null).map((s) => s.participant_no));
 const waiting = new Set(subs.filter((s) => s.participant_no != null && !used.has(s.participant_no)).map((s) => s.participant_no)).size;
 const need = row === 1 ? 1 : 3;

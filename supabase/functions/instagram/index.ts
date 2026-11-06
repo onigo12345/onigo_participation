@@ -1,9 +1,9 @@
 // Instagram への投稿（Supabase Edge Function「instagram」）
 //
-// ・ストーリー：参加者が「載せる」を選ぶと、データベースから合図（{story: 画像の番号}）が届く。
-//   合図の中身は信用せず、データベースの状態（claim_story）を見て、投稿してよい画像だけを1回だけ投稿する。
+// ・ストーリー：本人が「載せる」を選び（18歳以上だけ）、運営者が管理ページで承認した画像だけを、1回だけ投稿する。
+//   承認（{approve: 画像の番号}）すると、ストーリーに投稿し、フィードの順番待ちにも入る。
 // ・フィード：GitHub Actions（tools/feed）が作った列（3枚）を、右 → 真ん中 → 左の順に投稿する。
-// ・ストーリーやフィードのやり直し／接続の確認：管理ページから。ログイン中の管理者だけが使える。
+// ・承認・見送り・やり直し・接続の確認：管理ページから。ログイン中の管理者だけが使える。
 //
 // Instagram の鍵（アクセストークン）は、Supabase の Edge Functions → Secrets の IG_TOKEN にだけ置く。
 // このファイルやデータベース、参加者のブラウザには置かない。
@@ -126,23 +126,13 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   if (!TOKEN) return json({ status: "error", message: "IG_TOKEN（Instagramの鍵）が Secrets に入っていません" }, 500);
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-  const id = Number(body.story ?? body.retryStory);
+  const id = Number(body.approve ?? body.reject ?? body.retryStory);
 
   // GitHub Actions からの合図：「投稿待ち」の列を順番どおりに投稿するだけなので、ログインは要らない
   if (body.feedRow != null) {
     const row = Number(body.feedRow);
     if (!Number.isSafeInteger(row)) return json({ error: "bad row" }, 400);
     return json(await postFeedRow(row));
-  }
-
-  // データベースからの合図：誰が呼んでも、投稿してよい画像を1回だけ投稿するだけなので、ログインは要らない
-  if (body.story != null) {
-    if (!Number.isSafeInteger(id)) return json({ error: "bad id" }, 400);
-    const task = postStory(id);
-    // deno-lint-ignore no-explicit-any
-    const rt = (globalThis as any).EdgeRuntime;
-    if (rt?.waitUntil) { rt.waitUntil(task); return json({ status: "accepted" }); }
-    return json(await task);
   }
 
   const ng = await adminCheck(req);
@@ -153,6 +143,24 @@ Deno.serve(async (req) => {
       const me = await graph(IG_USER, { fields: "username" }, "GET");
       return json({ status: "ok", username: me.username });
     } catch (e) { return json({ status: "error", message: msg(e) }); }
+  }
+  // 承認：この画像を投稿してよいと決める。本人が「ストーリーに載せる」を選んでいれば、すぐストーリーに投稿する
+  if (body.approve != null && Number.isSafeInteger(id)) {
+    const { data: ok, error } = await db.from("submissions").update({ approved_at: new Date().toISOString(), rejected_at: null })
+      .eq("id", id).is("approved_at", null).select("id, story_requested_at, story_posted_at, participant_no");
+    if (error) return json({ status: "error", message: error.message });
+    if (!ok?.length) return json({ status: "skip", message: "承認済みか、見つかりません" });
+    const { data: adult } = await db.from("participants").select("adult_at").eq("id", ok[0].participant_no).maybeSingle();
+    if (!adult?.adult_at) {   // 18歳以上の同意がない人の画像は投稿しない（念のため）
+      await db.from("submissions").update({ approved_at: null }).eq("id", id);
+      return json({ status: "error", message: "18歳以上の同意がない参加者の画像です" });
+    }
+    if (!ok[0].story_requested_at || ok[0].story_posted_at) return json({ status: "ok", story: "none" });
+    return json({ ...(await postStory(id, true)), approved: true });
+  }
+  if (body.reject != null && Number.isSafeInteger(id)) {
+    const { error } = await db.from("submissions").update({ rejected_at: new Date().toISOString() }).eq("id", id).is("approved_at", null);
+    return json(error ? { status: "error", message: error.message } : { status: "ok" });
   }
   if (body.retryStory != null && Number.isSafeInteger(id)) {
     await db.from("submissions").update({ story_posting_at: null }).eq("id", id).is("story_posted_at", null);

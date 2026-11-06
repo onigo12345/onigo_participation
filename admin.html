@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>管理ページ｜つかまえた。</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=9">
+<link rel="stylesheet" href="fonts/fonts.css?v=10">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--orange:#f5821f;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;--line:#dedbe4;--panel:#fff;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -110,15 +110,26 @@ td.n,th.n{text-align:right}
         <button class="btn ghost" id="reload" type="button">更新</button>
       </div>
     </div>
+    <div class="igbox" id="nextbox">
+      <h2 style="margin:0">次回の日時</h2>
+      <p class="hint">帰る時のページ（青いQR）と掲示用のページに出ます。参加者はワンタップでカレンダーに追加できます。開催が終わったら、次の日時に書き換えてください。</p>
+      <div class="tools" style="flex-wrap:wrap">
+        <input type="datetime-local" id="nextAt" style="font:inherit;padding:8px;border:1px solid var(--line)">
+        <input id="nextPlace" maxlength="40" placeholder="場所" style="font:inherit;padding:8px;border:1px solid var(--line);min-width:12em">
+        <button class="btn blue" id="nextSave" type="button">保存</button>
+        <button class="btn ghost" id="nextClear" type="button">未定にする</button>
+        <span class="hint" id="nextState"></span>
+      </div>
+      <p class="hint">公園の掲示用ページ（開始時刻と今の人数が自動で更新されます）：<a id="nowLink" target="_blank" rel="noopener" href="now.html?k=fjpc5t6gz9">掲示用のページを開く</a>（タブレットやスマホに表示して置いておく）</p>
+    </div>
     <div class="igbox" id="igbox">
-      <h2 style="margin:0">Instagram への投稿</h2>
-      <label class="toggle"><input type="checkbox" id="autoStory"> 参加者が「載せる」を選んだ画像を、ストーリーに自動で投稿する</label>
+      <h2 style="margin:0">Instagram への投稿（承認制）</h2>
+      <p class="hint">投稿するのは、18歳以上・注意書きに同意した参加者が「使ってよい」を選び、運営者が下の各画像の「承認する」を押したものだけです。承認すると、本人が「ストーリーに載せる」を選んでいればすぐストーリーに投稿し（24時間に最大<span id="capN">30</span>件）、「投稿にも使ってよい」を選んでいればフィードの順番待ちに入ります。承認待ち：<b id="waitN">–</b>件</p>
       <div class="tools"><button class="btn ghost" id="igCheck" type="button">Instagramとの接続を確認</button><span class="hint" id="igState"></span></div>
-      <p class="hint">自動で投稿するのは、参加者が「参加する！」の時にチェックを付けたままにした画像だけです（1人1日1回、24時間に最大<span id="capN">30</span>件）。止めている間に参加した人の画像は、各画像の「ストーリーに投稿」で後から出せます。フィードの投稿は、本人が「投稿にも使ってよい」を選んだ手の素材を公式投稿メーカーに入れて作ります。</p>
     </div>
     <div class="igbox" id="feedbox" hidden>
       <h2 style="margin:0">フィード（3枚で1列・糸の柄がつながる）</h2>
-      <label class="toggle"><input type="checkbox" id="autoFeed"> 「投稿にも使ってよい」の手が1列ぶんたまったら、自動で投稿する</label>
+      <label class="toggle"><input type="checkbox" id="autoFeed"> 承認済みの「投稿にも使ってよい」の手が1列ぶんたまったら、自動で投稿する</label>
       <p class="hint" id="feedInfo"></p>
       <p class="hint">1列目は真ん中に最初に届いた手（創始者）だけ、2列目からは届いた順に3人分を左・真ん中・右に並べ、公式投稿メーカーと同じ柄で描きます。投稿は右 → 真ん中 → 左の順（プロフィールで左上に来るのが左）。確認は15分ごとです。</p>
       <label>投稿の文章（2列目から。{no} が参加番号になります。ストーリー画像の「◯人目のおともだち」と同じ番号です）<textarea id="capMain" rows="9"></textarea></label>
@@ -129,6 +140,7 @@ td.n,th.n{text-align:right}
     </div>
     <div class="filter" id="filter" role="group" aria-label="見え方で絞り込む">
       <button type="button" data-v="all" aria-pressed="true">すべて</button>
+      <button type="button" data-v="wait" aria-pressed="false">承認待ち</button>
       <button type="button" data-v="none" aria-pressed="false">そのまま</button>
       <button type="button" data-v="soft" aria-pressed="false">ふんわり</button>
       <button type="button" data-v="blur" aria-pressed="false">強くぼかす</button>
@@ -183,7 +195,7 @@ const CFG=window.APP_CONFIG||{}, BUCKET=CFG.BUCKET||"hands";
 const $=id=>document.getElementById(id);
 const LOOK={none:"そのまま",soft:"ふんわり",blur:"強くぼかす",shape:"かたちだけ"};
 const pad=n=>String(n||0).padStart(3,"0");
-let sb=null, latest=[], all=[], urls={}, view="all";
+let sb=null, latest=[], all=[], urls={}, view="all", ADULT=new Set();
 function say(t,err){ const s=$("status"); s.textContent=t; s.classList.toggle("err",!!err); }
 
 if(!CFG.SUPABASE_URL||!CFG.SUPABASE_ANON_KEY||!window.supabase){
@@ -219,12 +231,13 @@ async function processDeletions(){
 
 async function load(){
   say("読み込み中…"); loadSettings();
-  const [people,subs]=await Promise.all([
+  const [people,adults,subs]=await Promise.all([
     sb.from("participants").select("id",{count:"exact",head:true}),
+    sb.from("participants").select("id").not("adult_at","is",null).limit(10000),
     sb.from("submissions").select("*").order("created_at",{ascending:false}).limit(5000),
   ]);
   if(subs.error){ say("読み込めませんでした（"+subs.error.message+"）。supabase.sql の管理者のメールアドレスを確認してください。",true); return; }
-  all=subs.data;
+  all=subs.data; ADULT=new Set((adults.data||[]).map(p=>p.id));
   const seen=new Set(); latest=all.filter(r=>!seen.has(r.participant_no)&&seen.add(r.participant_no));
   if(!latest.length && !all.length) say("");
   $("sPeople").textContent=people.count??"–";
@@ -242,9 +255,9 @@ async function load(){
 
 function render(){
   const grid=$("grid"); grid.textContent="";
-  const list=latest.filter(r=>view==="all"||r.look===view);
+  const list=latest.filter(r=>view==="all"||(view==="wait"?isWaiting(r):r.look===view));
   if(!list.length){ const e=document.createElement("div"); e.className="empty";
-    e.textContent=latest.length?"この見え方の画像はありません。":"まだ画像がありません。参加者がQRから画像を作ると、ここに並びます。"; grid.append(e); return; }
+    e.textContent=latest.length?(view==="wait"?"承認待ちの画像はありません。":"この見え方の画像はありません。"):"まだ画像がありません。参加者がQRから画像を作ると、ここに並びます。"; grid.append(e); return; }
   for(const r of list){
     const card=document.createElement("div"); card.className="card";
     const pics=document.createElement("div"); pics.className="pics";
@@ -257,16 +270,30 @@ function render(){
       <span><span class="chip ${r.look||"none"}">${LOOK[r.look]||"そのまま"}</span>　${new Date(r.created_at).toLocaleString("ja-JP")}</span>
       ${older>0?`<span style="color:var(--muted)">ほかに${older}件（選び直す前の画像）</span>`:""}`;
     const post=document.createElement("div"); post.className="post";
+    const wants=!!(r.story_requested_at||r.feed_ok), adult=ADULT.has(r.participant_no);
+    const ap=!wants?'<span>使わない（本人が選んでいない）</span>'
+      :!adult?'<span class="ng">18歳以上の同意なし（投稿しない）</span>'
+      :r.rejected_at?'<span>見送り</span>':r.approved_at?'<span class="ok">承認済み</span>':'<span class="ng">承認待ち</span>';
     const st=r.story_posted_at?'<span class="ok">ストーリー：投稿済み</span>'
       :!r.story_requested_at?'<span>ストーリー：載せない</span>'
       :r.post_error&&/^ストーリー|上限/.test(r.post_error)?'<span class="ng">ストーリー：失敗</span>'
       :r.story_posting_at?'<span>ストーリー：投稿中</span>':'<span>ストーリー：まだ</span>';
     const fd=r.feed_posted_at?'<span class="ok">投稿：投稿済み</span>':r.feed_ok?'<span>投稿：使ってよい</span>':'<span>投稿：使わない</span>';
-    post.innerHTML=st+fd;
+    post.innerHTML=ap+st+fd;
     meta.append(post);
     if(r.post_error){ const e=document.createElement("span"); e.className="posterr"; e.textContent=r.post_error; meta.append(e); }
     const acts=document.createElement("div"); acts.className="acts";
-    if(r.story_requested_at&&!r.story_posted_at){
+    if(isWaiting(r)){
+      const ok=btn("承認する","blue",async()=>{ ok.disabled=true; ok.textContent="承認中…";
+        try{ const d=await ig({approve:r.id}); say(`No.${pad(r.participant_no)} を承認しました。`+(d.media?"ストーリーに投稿しました。":"")+(r.feed_ok?"フィードの順番待ちに入りました。":"")); }
+        catch(e){ say("承認できませんでした（"+e.message+"）",true); }
+        load(); });
+      const no=btn("見送る","ghost",async()=>{ no.disabled=true;
+        try{ await ig({reject:r.id}); say(`No.${pad(r.participant_no)} を見送りました（投稿しません）。`); }
+        catch(e){ say("見送れませんでした（"+e.message+"）",true); }
+        load(); });
+      acts.append(ok,no); }
+    if(r.approved_at&&r.story_requested_at&&!r.story_posted_at){
       const b=btn("ストーリーに投稿","blue",async()=>{ b.disabled=true; b.textContent="投稿中…";
         try{ await ig({retryStory:r.id}); say(`No.${pad(r.participant_no)} をストーリーに投稿しました。`); }
         catch(e){ say("ストーリーに投稿できませんでした（"+e.message+"）",true); }
@@ -283,6 +310,7 @@ function render(){
     card.append(pics,meta,acts); grid.append(card);
   }
 }
+function isWaiting(r){ return !!(r.story_requested_at||r.feed_ok) && ADULT.has(r.participant_no) && !r.approved_at && !r.rejected_at; }
 function btn(t,cls,fn){ const b=document.createElement("button"); b.type="button"; b.className="btn "+cls; b.textContent=t; b.onclick=fn; return b; }
 
 // Instagram への投稿はサーバー（Edge Function「instagram」）が行う。鍵はこのページには置かない
@@ -292,11 +320,6 @@ async function ig(body){
   if(data?.status==="error") throw new Error(data.message);
   return data;
 }
-$("autoStory").addEventListener("change",async e=>{
-  const {error}=await sb.from("settings").update({auto_story:e.target.checked}).eq("id",1);
-  if(error){ say("変更できませんでした（"+error.message+"）",true); e.target.checked=!e.target.checked; return; }
-  say(e.target.checked?"ストーリーの自動投稿を始めました。":"ストーリーの自動投稿を止めました。");
-});
 $("igCheck").addEventListener("click",async()=>{
   $("igState").textContent="確認中…";
   try{ const r=await ig({check:true}); $("igState").textContent=`つながっています（@${r.username}）`; }
@@ -313,10 +336,10 @@ async function loadFeed(){
     sb.from("feed_posts").select("row_no,pos,ord,participant_no,status,error").order("row_no",{ascending:false}),
     sb.from("feed_state").select("next_row").eq("id",1).maybeSingle()]);
   const next=state.data?.next_row||1, need=next===1?1:3;
-  const waiting=new Set(all.filter(r=>r.feed_ok&&r.feed_row==null).map(r=>r.participant_no));
+  const waiting=new Set(all.filter(r=>r.feed_ok&&r.approved_at&&r.feed_row==null).map(r=>r.participant_no));
   const used=new Set(all.filter(r=>r.feed_row!=null).map(r=>r.participant_no));
   const n=[...waiting].filter(x=>!used.has(x)).length;
-  $("feedInfo").textContent=`次は${next}列目。「投稿にも使ってよい」の手：${n}人分（あと${Math.max(0,need-n)}人分で投稿）`;
+  $("feedInfo").textContent=`次は${next}列目。承認済みの「投稿にも使ってよい」の手：${n}人分（あと${Math.max(0,need-n)}人分で投稿）`;
   const t=$("feedRows"); t.innerHTML="<tr><th>列</th><th>状態</th><th>左・真ん中・右</th><th></th></tr>";
   for(const r of rows.data||[]){
     const ps=(posts.data||[]).filter(p=>p.row_no===r.row_no).sort((a,b)=>a.pos-b.pos);
@@ -342,15 +365,24 @@ $("autoFeed").addEventListener("change",async e=>{
   say(e.target.checked?"フィードの自動投稿を始めました。":"フィードの自動投稿を止めました。");
 });
 async function loadSettings(){
-  const {data,error}=await sb.from("settings").select("auto_story,story_daily_cap").eq("id",1).maybeSingle();
-  if(error||!data){ $("igbox").hidden=false; $("autoStory").disabled=true;
+  const {data,error}=await sb.from("settings").select("story_daily_cap,next_event_at,next_event_place").eq("id",1).maybeSingle();
+  if(error||!data){
     $("igState").textContent="設定を読み込めませんでした："+(error?`${error.code||""} ${error.message}`:"設定の行がありません（supabase.sql を実行してください）");
-    // 原因を調べるための情報（ログイン中のアカウントを、データベースがどう見ているか）
-    try{ const w=await sb.rpc("whoami"); if(!w.error) $("igState").textContent+=`　［確認用：${JSON.stringify(w.data)}］`; }catch{}
     return; }
-  $("autoStory").disabled=false;
-  $("igbox").hidden=false; $("autoStory").checked=data.auto_story; $("capN").textContent=data.story_daily_cap;
+  $("capN").textContent=data.story_daily_cap;
+  if(!$("nextAt").dataset.dirty){ $("nextAt").value=data.next_event_at?toLocal(data.next_event_at):""; $("nextPlace").value=data.next_event_place||""; }
 }
+// datetime-local の値（日本時間）と、データベースの時刻を行き来する
+function toLocal(iso){ const d=new Date(iso), p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }
+["nextAt","nextPlace"].forEach(id=>$(id).addEventListener("input",()=>{ $("nextAt").dataset.dirty="1"; $("nextState").textContent="未保存"; }));
+async function saveNext(at){
+  const {error}=await sb.from("settings").update({next_event_at:at,next_event_place:$("nextPlace").value.trim()||"立命館OIC 岩倉公園"}).eq("id",1);
+  if(error){ $("nextState").textContent="保存できませんでした（"+error.message+"）"; return; }
+  delete $("nextAt").dataset.dirty; $("nextState").textContent=at?"保存しました："+new Date(at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",weekday:"short",hour:"2-digit",minute:"2-digit"}):"未定にしました";
+  if(!at) $("nextAt").value="";
+}
+$("nextSave").addEventListener("click",()=>{ const v=$("nextAt").value; if(!v){ $("nextState").textContent="日時を入れてください"; return; } saveNext(new Date(v).toISOString()); });
+$("nextClear").addEventListener("click",()=>saveNext(null));
 async function blobOf(path){ const {data,error}=await sb.storage.from(BUCKET).download(path); if(error) throw error; return data; }
 function saveBlob(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.append(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000); }
 async function download(path,name){ try{ saveBlob(await blobOf(path),name); }catch(e){ say("保存できませんでした（"+(e.message||e)+"）",true); } }
@@ -524,9 +556,11 @@ function qrPoster(q, arrive, F, C) {
   const bandTop = h - 250, top = 110 + fs * 2.12 + 20, size = Math.min(660, bandTop - 36 - top);
   g.fillStyle = band; g.fillRect(0, bandTop, 1000, h - bandTop);
   g.fillStyle = C.paper; g.textAlign = "center";
-  g.font = F(900, 46); g.fillText(arrive ? "参加する時に、読み込んでね！" : "帰る前に、もう一度読み込んでね！", 500, bandTop + 40);
-  g.font = F(700, 28); g.fillText("@onigo12345　立命館OIC 岩倉公園", 500, bandTop + 118);
-  g.globalAlpha = .85; g.font = F(500, 20); g.fillText("大学非公認の学生有志サークル", 500, bandTop + 176); g.globalAlpha = 1;
+  const line = (t, wt, size, y) => { g.font = F(wt, size); const w = g.measureText(t).width; if (w > 900) g.font = F(wt, size * 900 / w); g.fillText(t, 500, y); };
+  line(arrive ? "18歳以上の人は、参加する時に読み込んでね！" : "帰る前に読むと、今日タッチした手の画像がもらえる！", 900, 44, bandTop + 28);
+  line(arrive ? "QRなしでも「入れて」で参加OK！ 途中参加も歓迎" : "QRなしでも「入れて」で参加OK！ また遊ぼうね", 700, 32, bandTop + 94);
+  line("@onigo12345　立命館OIC 岩倉公園", 700, 26, bandTop + 150);
+  g.globalAlpha = .85; line("大学非公認の学生有志サークル", 500, 20, bandTop + 198); g.globalAlpha = 1;
   // QRは画素ぴったりに描く（にじまないように）
   g.setTransform(1, 0, 0, 1, 0, 0);
   const cell = Math.floor(size * S / (n + 4)), x0 = Math.round((W - cell * (n + 4)) / 2), y0 = Math.round(top * S);

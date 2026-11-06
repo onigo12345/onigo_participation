@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#e82c34">
+<title>いまの鬼ごっこ｜立命館OIC 鬼ごっこサークル</title>
+<link rel="stylesheet" href="fonts/fonts.css?v=10">
+<style>
+/* 公園の掲示用：タブレットやスマホに表示して置いておく。30秒ごとに自動で更新 */
+:root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;
+  --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--font)}
+main{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto;gap:2vmin;overflow:hidden;
+  padding:max(4vmin,env(safe-area-inset-top)) max(5vmin,env(safe-area-inset-right)) max(4vmin,env(safe-area-inset-bottom)) max(5vmin,env(safe-area-inset-left))}
+.art{position:absolute;right:-18vmin;bottom:-18vmin;width:80vmin;height:80vmin;pointer-events:none;opacity:.95}
+main>*{position:relative}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:2vmin;flex-wrap:wrap}
+.eyebrow{font-size:clamp(.7rem,2vmin,1.1rem);font-weight:700;letter-spacing:.12em}
+.clock{font-size:clamp(1rem,4vmin,2.2rem);font-weight:900;font-variant-numeric:tabular-nums}
+.mid{align-self:center;display:grid;gap:1.2vmin;min-height:0}
+h1{margin:0;font-size:clamp(1.8rem,7vmin,5rem);font-weight:900;color:var(--red);line-height:1.05}
+.now{margin:0;font-size:clamp(1.1rem,4vmin,2.6rem);font-weight:900}
+.num{font-size:clamp(4rem,21vmin,15rem);font-weight:900;line-height:.95;color:var(--blue);font-variant-numeric:tabular-nums}
+.num small{font-size:.22em;color:var(--ink);margin-left:.15em}
+.since{margin:0;font-size:clamp(1.1rem,4.4vmin,2.6rem);font-weight:900}
+.welcome{margin:0;display:inline-block;width:fit-content;background:var(--red);color:#fff;font-size:clamp(1.2rem,5vmin,3rem);font-weight:900;padding:.2em .5em}
+.foot{display:flex;justify-content:space-between;align-items:flex-end;gap:3vmin;flex-wrap:wrap}
+.free{margin:0;background:rgba(255,255,255,.94);border:3px solid var(--ink);padding:1.2vmin 2vmin;font-size:clamp(1rem,3.6vmin,2.2rem);font-weight:900;line-height:1.4}
+.free b{color:var(--red)}
+.free small{display:block;font-size:.55em;font-weight:700}
+.qr{background:#fff;padding:1.2vmin;display:grid;justify-items:center;gap:.6vmin;font-size:clamp(.7rem,1.8vmin,1rem);font-weight:700;text-align:center}
+.qr canvas{width:clamp(90px,22vmin,220px);height:auto;image-rendering:pixelated}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <svg class="art" viewBox="0 0 400 400" aria-hidden="true">
+    <defs><clipPath id="ca"><circle cx="150" cy="200" r="140"/></clipPath></defs>
+    <circle cx="150" cy="200" r="140" fill="#e82c34"/><circle cx="270" cy="200" r="140" fill="#1c48c4"/>
+    <circle cx="270" cy="200" r="140" fill="#9a26d9" clip-path="url(#ca)"/>
+  </svg>
+  <div class="top"><span class="eyebrow">RITSUMEIKAN OIC&nbsp; ONIGOKKO CIRCLE ／ 岩倉公園</span><span class="clock" id="clock"></span></div>
+  <div class="mid">
+    <h1>おにごっこサークル</h1>
+    <p class="now" id="nowLine">今</p>
+    <span class="num" id="numWrap"><span id="num">…</span><small>人が遊んでいます</small></span>
+    <p class="since" id="since"></p>
+    <p class="welcome" id="welcome">途中参加、大歓迎！</p>
+  </div>
+  <div class="foot">
+    <p class="free">QRなしでも<b>「入れて」</b>で参加OK！<small>18歳以上の人は、QRを読むと帰りに手の画像がもらえます</small></p>
+    <div class="qr" id="qrBox" hidden><canvas id="qr"></canvas>参加する時に読んでね</div>
+  </div>
+</main>
+<script src="vendor/supabase.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="config.js?v=20261107a"></script>
+<script src="visit.js?v=20261107a"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const WD = ["日", "月", "火", "水", "木", "金", "土"];
+const jst = (d) => new Date(new Date(d).getTime() + 9 * 3600e3);
+const hm = (d) => { const j = jst(d); return `${j.getUTCHours()}:${String(j.getUTCMinutes()).padStart(2, "0")}`; };
+const md = (d) => { const j = jst(d); return `${j.getUTCMonth() + 1}月${j.getUTCDate()}日（${WD[j.getUTCDay()]}）`; };
+function clock() { $("clock").textContent = md(new Date()) + " " + hm(new Date()); }
+async function refresh() {
+  try {
+    const st = await window.Visit.status();
+    $("num").textContent = st.playing; $("numWrap").hidden = false;
+    if (st.playing > 0) {
+      $("nowLine").textContent = "今";
+      $("since").textContent = st.started_at ? `今日は ${hm(st.started_at)} から開催中` : "";
+      $("welcome").textContent = "途中参加、大歓迎！";
+    } else {
+      $("nowLine").textContent = st.started_at ? `今日は ${hm(st.started_at)} から遊びました` : "今日はまだ始まっていません";
+      $("numWrap").hidden = true;
+      $("since").textContent = st.next_at ? `次回：${md(st.next_at)} ${hm(st.next_at)}〜　${st.next_place || ""}` : "次回は @onigo12345 でお知らせします";
+      $("welcome").textContent = "来た人から、はじめよう！";
+    }
+  } catch (e) { console.warn(e); }
+}
+// 参加用のQR（設置者の合言葉 ?k= を付けて開くと、その合言葉のQRを表示）
+const k = new URLSearchParams(location.search).get("k");
+if (k && /^[a-z0-9]{4,32}$/.test(k) && window.qrcode) {
+  const q = qrcode(0, "M"); q.addData(new URL("./?k=" + k, location.href).href); q.make();
+  const n = q.getModuleCount(), cell = 6, c = $("qr"); c.width = c.height = (n + 4) * cell;
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.fillStyle = "#19161e";
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) g.fillRect((x + 2) * cell, (y + 2) * cell, cell, cell);
+  $("qrBox").hidden = false;
+}
+clock(); refresh();
+setInterval(clock, 10000); setInterval(refresh, 30000);
+// 画面が消えないように（対応している端末だけ）
+async function keepAwake() { try { await navigator.wakeLock?.request("screen"); } catch {} }
+keepAwake(); document.addEventListener("visibilitychange", () => { if (!document.hidden) { keepAwake(); refresh(); } });
+</script>
+</body>
+</html>

@@ -38,7 +38,13 @@
 
   window.Visit = {
     online: !!sb,
-    // 来た時：参加番号・何回目か・アンケート済みかを返す
+    // 今遊んでいる人数・今日の開始時刻・次回の日時（誰でも読める。一人ひとりの記録は含まない）
+    async status() {
+      if (sb) return rpc("public_status", {});
+      return { playing: 3, started_at: new Date(Date.now() - 40 * 60000).toISOString(),
+               next_at: new Date(Date.now() + 7 * 86400000).toISOString(), next_place: CFG.PLACE || "", now: new Date().toISOString() };
+    },
+    // 来た時（「18歳以上・注意書きに同意して参加」を押した時だけ）：参加番号・何回目か・アンケート済みかを返す
     async join() {
       if (sb) return rpc("join_visit", { p_device: deviceKey(), p_spot: spot() });
       const v = local.get(); v.days = v.days || {};
@@ -95,9 +101,10 @@
         return rpc("leave_visit", { p_device: deviceKey(), p_spot: spot(), p_feeling: feeling || null });
       }
       const v = local.get(); if (!v.no) return { known: false };
-      v.days = v.days || {}; const d = v.days[today()] || (v.days[today()] = {});
-      d.left = Date.now(); if (feeling) d.feeling = feeling; local.put(v);
+      v.days = v.days || {}; const d = v.days[today()] || {};   // 来た時のQRを読んでいない日は、来場を作らない
+      if (v.days[today()]) { if (!(feeling && d.left)) d.left = Date.now(); if (feeling) d.feeling = feeling; local.put(v); }
       return { known: true, no: v.no, visits: Object.keys(v.days).length, nickname: v.profile?.nickname || null,
+               has_profile: !!v.profile, adult: true, today: !!d.arrived,
                minutes: d.arrived ? Math.round((d.left - d.arrived) / 60000) : null };
     },
   };

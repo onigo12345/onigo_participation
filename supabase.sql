@@ -28,6 +28,7 @@ alter table participants add column if not exists heard_from    text;
 alter table participants add column if not exists gender        text;     -- 性別（任意：男性／女性／その他）
 alter table participants add column if not exists profile_at    timestamptz;
 alter table participants add column if not exists profile_tries smallint not null default 0;   -- 名前の確認を何回したか（総当たり対策）
+alter table participants add column if not exists adult_at      timestamptz;   -- 「18歳以上・注意書きに同意」を押した時刻
 create unique index if not exists participants_device_key on participants(device_key);
 
 -- ---------- QRの設置者 ----------
@@ -105,7 +106,7 @@ create or replace function public._today() returns date language sql stable
 update participants set device_key = public._hash(device_key) where device_key is not null and length(device_key) <> 64;
 
 -- ---------- 参加者のスマホから呼ぶ処理（表は直接読めない・書けない。この処理だけ使える） ----------
--- 来た時のQR：参加者を登録（初回のみ）し、今日の来場を記録する
+-- 来た時のQR：「18歳以上・注意書きに同意して参加」を押した時だけ呼ぶ。参加者を登録（初回のみ）し、今日の来場を記録する
 drop function if exists public.join_visit(text, text);
 create or replace function public.join_visit(p_device text, p_spot text default null) returns json
   language plpgsql security definer set search_path = public as $$
@@ -116,6 +117,7 @@ begin
   if pid is null then
     insert into participants(device_key, source) values (public._hash(p_device), 'qr') returning id into pid; prof := false;
   end if;
+  update participants set adult_at = coalesce(adult_at, now()) where id = pid;
   select token into s from spots where token = p_spot and active;
   insert into visits(participant_no, spot, visit_date, arrived_at) values (pid, s, today, now())
     on conflict (participant_no, visit_date) do update
@@ -202,20 +204,21 @@ begin
 end $$;
 
 -- 帰る時のQR：帰った時刻を記録し、今日の滞在時間を返す
+-- 通算の回数は来た時に数える。来た時のQRを読んでいない日は来場を作らず、滞在時間は「未記録」（null）
+-- 楽しかった度だけを送る時（2回目以降）は、帰った時刻を動かさない
 drop function if exists public.leave_visit(text, text, smallint);
 create or replace function public.leave_visit(p_device text, p_spot text default null, p_feeling smallint default null) returns json
   language plpgsql security definer set search_path = public as $$
-declare pid bigint := public._me(p_device); today date := public._today(); s text := null; v visits; n int; nick text;
+declare pid bigint := public._me(p_device); today date := public._today(); v visits; n int; nick text; prof boolean; adult boolean;
 begin
   if pid is null then return json_build_object('known', false); end if;
-  select token into s from spots where token = p_spot and active;
-  insert into visits(participant_no, spot, visit_date, left_at, feeling) values (pid, s, today, now(), p_feeling)
-    on conflict (participant_no, visit_date) do update
-      set left_at = now(), feeling = coalesce(excluded.feeling, visits.feeling), spot = coalesce(visits.spot, excluded.spot)
-    returning * into v;
+  update visits set left_at = case when p_feeling is not null and left_at is not null then left_at else now() end,
+                    feeling = coalesce(p_feeling, feeling)
+   where participant_no = pid and visit_date = today returning * into v;
   select count(*) into n from visits where participant_no = pid;
-  select nickname into nick from participants where id = pid;
-  return json_build_object('known', true, 'no', pid, 'visits', n, 'nickname', nick,
+  select nickname, nickname is not null, adult_at is not null into nick, prof, adult from participants where id = pid;
+  return json_build_object('known', true, 'no', pid, 'visits', n, 'nickname', nick, 'has_profile', prof, 'adult', adult,
+    'today', v.id is not null,
     'minutes', case when v.arrived_at is null then null else round(extract(epoch from (v.left_at - v.arrived_at)) / 60) end);
 end $$;
 
@@ -265,7 +268,7 @@ grant execute on function public.forget_me(text)                            to a
 grant usage on schema public to anon, authenticated;
 revoke all on participants, visits, spots, submissions, admins, deletion_requests from anon, authenticated;
 -- 管理者も、端末の目印（device_key）や確認の回数は見られない
-grant select (id, source, faculty, grade, nickname, heard_from, gender, profile_at, created_at) on participants to authenticated;
+grant select (id, source, faculty, grade, nickname, heard_from, gender, profile_at, created_at, adult_at) on participants to authenticated;
 grant select                 on visits            to authenticated;
 grant select, insert, update on spots             to authenticated;
 grant select, delete         on submissions       to authenticated;
@@ -348,21 +351,23 @@ end $$;
 revoke all on function public.request_story(text) from public;
 grant execute on function public.request_story(text) to anon, authenticated;
 
--- 参加者：最後の画面で選んだ「ストーリーに載せる」「投稿にも使ってよい」を、今日いちばん新しい画像に記録する
+-- 参加者：受け取りの画面で選んだ「ストーリーに載せる」「投稿にも使ってよい」を、今日いちばん新しい画像に記録する
+-- 18歳以上・注意書きに同意した人の画像だけ。実際の投稿は、運営者が管理ページで承認してから
 alter table submissions add column if not exists feed_ok boolean not null default false;
+alter table submissions add column if not exists approved_at timestamptz;   -- 運営者が承認した時刻（承認するまで投稿しない）
+alter table submissions add column if not exists rejected_at timestamptz;   -- 運営者が見送った時刻
 create or replace function public.give_consent(p_device text, p_story boolean, p_feed boolean) returns text
   language plpgsql security definer set search_path = public as $$
 declare pid bigint := public._me(p_device); sid bigint;
 begin
   if pid is null then return 'unknown'; end if;
+  if not exists (select 1 from participants where id = pid and adult_at is not null) then return 'notadult'; end if;
   select id into sid from submissions where participant_no = pid and story_path is not null
     and (created_at at time zone 'Asia/Tokyo')::date = public._today() order by created_at desc limit 1;
   if sid is null then return 'none'; end if;
-  if p_feed then update submissions set feed_ok = true where id = sid; end if;
-  if p_story and not exists (select 1 from submissions where participant_no = pid
-             and (story_requested_at at time zone 'Asia/Tokyo')::date = public._today()) then
-    update submissions set story_requested_at = now() where id = sid;   -- ストーリーは1日1回まで
-  end if;
+  update submissions set feed_ok = coalesce(p_feed, false),
+         story_requested_at = case when p_story then coalesce(story_requested_at, now()) end
+   where id = sid and approved_at is null;
   return 'ok';
 end $$;
 revoke all on function public.give_consent(text, boolean, boolean) from public;
@@ -374,7 +379,6 @@ create or replace function public.claim_story(p_id bigint, p_force boolean defau
 declare st settings; n int; path text;
 begin
   select * into st from settings where id = 1;
-  if not p_force and not coalesce(st.auto_story, false) then return null; end if;
   select count(*) into n from submissions where coalesce(story_posting_at, story_posted_at) > now() - interval '24 hours';
   if n >= coalesce(st.story_daily_cap, 30) then
     update submissions set post_error = '24時間の上限に達したため、投稿しませんでした' where id = p_id and story_posted_at is null;
@@ -382,7 +386,7 @@ begin
   end if;
   update submissions set story_posting_at = now(), post_error = null
    where id = p_id and story_path is not null and story_posted_at is null and story_posting_at is null
-     and story_requested_at is not null and (p_force or story_requested_at > now() - interval '30 minutes')
+     and story_requested_at is not null and approved_at is not null
    returning story_path into path;
   return path;
 end $$;
@@ -391,24 +395,11 @@ grant execute on function public.claim_story(bigint, boolean) to service_role;
 -- 投稿のプログラム（Edge Function）が、管理者の確認と投稿結果の記録に使う
 grant select on admins to service_role;
 grant select, update on submissions to service_role;
+grant select (id, adult_at) on participants to service_role;   -- 承認の時に、18歳以上の同意を確かめる
 
--- 「載せる」が記録されたら、Edge Function に合図を送る（中身は送らない。Edge Function がデータベースを見て判断する）
--- ※ 自分で動かす時は、URL を自分のプロジェクトのものに書き換えてください
-create extension if not exists pg_net;
-create or replace function public._story_signal() returns trigger
-  language plpgsql security definer set search_path = public as $$
-begin
-  perform net.http_post(
-    url := 'https://axwbndpdzlajvpqnegde.supabase.co/functions/v1/instagram',
-    body := jsonb_build_object('story', new.id),
-    headers := '{"Content-Type": "application/json"}'::jsonb);
-  return new;
-end $$;
-revoke all on function public._story_signal() from public, anon, authenticated;
+-- 以前の「載せる」を選んだらすぐ投稿する合図は使わない（運営者が承認してから投稿する）
 drop trigger if exists story_signal on submissions;
-create trigger story_signal after update of story_requested_at on submissions
-  for each row when (old.story_requested_at is null and new.story_requested_at is not null)
-  execute function public._story_signal();
+drop function if exists public._story_signal();
 
 -- ---------- フィードの自動投稿（3枚で1列・糸の柄がつながる） ----------
 -- GitHub Actions（tools/feed）が、使ってよい手が1列ぶんたまったら3枚を描いて「投稿待ち」の列を作り、
@@ -474,6 +465,25 @@ create policy "admin reads feed state" on feed_state for select to authenticated
 grant select, insert, update on feed_rows, feed_posts, feed_state to service_role;
 grant usage, select on all sequences in schema public to service_role;
 grant select on settings to service_role;
+
+-- ---------- 次回の日時と、今の人数（掲示用のページ・来た時のページで使う） ----------
+alter table settings add column if not exists next_event_at    timestamptz;
+alter table settings add column if not exists next_event_place text not null default '立命館OIC 岩倉公園';
+grant update (next_event_at, next_event_place) on settings to authenticated;
+-- 誰でも読める：今遊んでいる人数（今日来て、まだ帰っていない、4時間以内に来た人）・今日の開始時刻・次回の日時
+-- 一人ひとりの記録は返さない
+create or replace function public.public_status() returns json
+  language sql stable security definer set search_path = public as $$
+  select json_build_object(
+    'playing',    (select count(*) from visits where visit_date = public._today() and arrived_at is not null
+                     and left_at is null and arrived_at > now() - interval '4 hours'),
+    'started_at', (select min(arrived_at) from visits where visit_date = public._today()),
+    'next_at',    (select next_event_at from settings where id = 1 and next_event_at > now() - interval '3 hours'),
+    'next_place', (select next_event_place from settings where id = 1),
+    'now',        now())
+$$;
+revoke all on function public.public_status() from public;
+grant execute on function public.public_status() to anon, authenticated;
 
 -- ---------- 最初のQR（代表が設置するもの） ----------
 insert into spots (token, placer, note) values ('fjpc5t6gz9', '代表', '最初のQR') on conflict (token) do nothing;
