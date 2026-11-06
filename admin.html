@@ -149,6 +149,7 @@ td.n,th.n{text-align:right}
       <div class="cols">
         <div><h2>学部</h2><div id="byFaculty"></div></div>
         <div><h2>回生</h2><div id="byGrade"></div></div>
+        <div><h2>性別</h2><div id="byGender"></div></div>
         <div><h2>知ったきっかけ</h2><div id="byHeard"></div></div>
         <div><h2>来た時間帯</h2><div id="byHour"></div></div>
       </div>
@@ -412,7 +413,7 @@ async function loadData(force){
   try{
     const [visits,people,spots]=await Promise.all([
       fetchAll("visits","*","id"),
-      fetchAll("participants","id,faculty,grade,nickname,heard_from,created_at","id"),
+      fetchAll("participants","id,faculty,grade,nickname,heard_from,gender,created_at","id"),
       fetchAll("spots","*","created_at")]);
     D={visits,people,spots}; say(""); renderData();
   }catch(e){ say("来場データを読み込めませんでした（"+(e.message||e)+"）。supabase.sql を最新版で実行し直してください。",true); }
@@ -458,6 +459,7 @@ function renderData(){
   const came=visitors.map(id=>P.get(id)).filter(Boolean);
   bars("byFaculty",count(came.map(p=>p.faculty||"未回答")));
   bars("byGrade",count(came.map(p=>p.grade||"未回答")));
+  bars("byGender",count(came.map(p=>p.gender||"未回答")));
   bars("byHeard",count(came.map(p=>p.heard_from||"未回答")));
   bars("byPlay",count(visits.flatMap(v=>v.play_kinds||[])));
   const plays=visits.filter(v=>(v.play_kinds&&v.play_kinds.length)||v.play_note).sort((x,y)=>(y.left_at||y.visit_date).localeCompare(x.left_at||x.visit_date));
@@ -475,9 +477,9 @@ function renderData(){
 $("csv").addEventListener("click",()=>{
   if(!D) return; const P=new Map(D.people.map(p=>[p.id,p])), S=new Map(D.spots.map(s=>[s.token,s.placer]));
   const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
-  const head=["日付","参加番号","ニックネーム","学部","回生","知ったきっかけ","設置者","来た時刻","帰った時刻","滞在(分)","画像","シェア","楽しさ","遊び","遊びのメモ"];
+  const head=["日付","参加番号","ニックネーム","学部","回生","性別","知ったきっかけ","設置者","来た時刻","帰った時刻","滞在(分)","画像","シェア","楽しさ","遊び","遊びのメモ"];
   const lines=D.visits.map(v=>{ const p=P.get(v.participant_no)||{}; const m=mins(v);
-    return [v.visit_date,v.participant_no,p.nickname,p.faculty,p.grade,p.heard_from,v.spot?S.get(v.spot):"",hm(v.arrived_at),hm(v.left_at),m==null?"":Math.round(m),v.made_image?1:0,v.shared?1:0,v.feeling??"",(v.play_kinds||[]).join("・"),v.play_note||""].map(q).join(","); });
+    return [v.visit_date,v.participant_no,p.nickname,p.faculty,p.grade,p.gender,p.heard_from,v.spot?S.get(v.spot):"",hm(v.arrived_at),hm(v.left_at),m==null?"":Math.round(m),v.made_image?1:0,v.shared?1:0,v.feeling??"",(v.play_kinds||[]).join("・"),v.play_note||""].map(q).join(","); });
   saveBlob(new Blob(["﻿"+[head.map(q).join(","),...lines].join("\r\n")],{type:"text/csv"}),`visits_${new Date().toISOString().slice(0,10)}.csv`);
 });
 

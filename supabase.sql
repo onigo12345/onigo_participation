@@ -25,6 +25,7 @@ alter table participants add column if not exists faculty       text;
 alter table participants add column if not exists grade         text;
 alter table participants add column if not exists nickname      text;
 alter table participants add column if not exists heard_from    text;
+alter table participants add column if not exists gender        text;     -- 性別（任意：男性／女性／その他）
 alter table participants add column if not exists profile_at    timestamptz;
 alter table participants add column if not exists profile_tries smallint not null default 0;   -- 名前の確認を何回したか（総当たり対策）
 create unique index if not exists participants_device_key on participants(device_key);
@@ -131,7 +132,8 @@ end $$;
 
 -- アンケート：同じ学部・同じニックネームの人がいたら、登録せずに {status:"exists"} を返す
 drop function if exists public.save_profile(text, text, text, text, text);
-create or replace function public.save_profile(p_device text, p_faculty text, p_grade text, p_nickname text, p_heard text) returns json
+drop function if exists public.save_profile(text, text, text, text, text, text);
+create or replace function public.save_profile(p_device text, p_faculty text, p_grade text, p_nickname text, p_heard text, p_gender text default '') returns json
   language plpgsql security definer set search_path = public as $$
 declare me bigint := public._me(p_device); other bigint; tries smallint;
 begin
@@ -145,7 +147,9 @@ begin
    where id <> me and faculty = p_faculty and public._norm(nickname) = public._norm(p_nickname) limit 1;
   if other is not null then return json_build_object('status', 'exists'); end if;
   update participants set faculty = p_faculty, grade = nullif(left(p_grade, 10), ''), nickname = trim(p_nickname),
-         heard_from = nullif(left(p_heard, 20), ''), profile_at = now()
+         heard_from = nullif(left(p_heard, 20), ''),
+         gender = case when p_gender in ('男性', '女性', 'その他') then p_gender end,
+         profile_at = now()
    where id = me;
   return json_build_object('status', 'ok', 'no', me);
 end $$;
@@ -250,7 +254,7 @@ end $$;
 
 revoke all on function public._me(text), public._hash(text), public._norm(text) from public, anon, authenticated;
 grant execute on function public.join_visit(text, text)                     to anon, authenticated;
-grant execute on function public.save_profile(text, text, text, text, text) to anon, authenticated;
+grant execute on function public.save_profile(text, text, text, text, text, text) to anon, authenticated;
 grant execute on function public.relink(text, text, text)                   to anon, authenticated;
 grant execute on function public.mark_visit(text, text)                     to anon, authenticated;
 grant execute on function public.add_submission(text, text, text, text)     to anon, authenticated;
@@ -261,7 +265,7 @@ grant execute on function public.forget_me(text)                            to a
 grant usage on schema public to anon, authenticated;
 revoke all on participants, visits, spots, submissions, admins, deletion_requests from anon, authenticated;
 -- 管理者も、端末の目印（device_key）や確認の回数は見られない
-grant select (id, source, faculty, grade, nickname, heard_from, profile_at, created_at) on participants to authenticated;
+grant select (id, source, faculty, grade, nickname, heard_from, gender, profile_at, created_at) on participants to authenticated;
 grant select                 on visits            to authenticated;
 grant select, insert, update on spots             to authenticated;
 grant select, delete         on submissions       to authenticated;

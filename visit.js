@@ -50,7 +50,14 @@
     },
     // アンケート：同じ学部・同じニックネームの人がいたら {status:"exists"} を返す
     async saveProfile(p) {
-      if (sb) return rpc("save_profile", { p_device: deviceKey(), p_faculty: p.faculty, p_grade: p.grade || "", p_nickname: p.nickname, p_heard: p.heard || "" });
+      if (sb) {
+        const args = { p_device: deviceKey(), p_faculty: p.faculty, p_grade: p.grade || "", p_nickname: p.nickname, p_heard: p.heard || "" };
+        try { return await rpc("save_profile", { ...args, p_gender: p.gender || "" }); }
+        catch (e) {   // データベースがまだ性別に対応していない時は、性別なしで送る
+          if (/save_profile|function|schema cache/i.test(e.message || "")) return rpc("save_profile", args);
+          throw e;
+        }
+      }
       const v = local.get(); v.profile = p; local.put(v); return { status: "ok", no: v.no };
     },
     // 「前にも来た」本人：この端末を前の記録につなぎ直す
