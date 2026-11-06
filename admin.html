@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>管理ページ｜つかまえた。</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=11">
+<link rel="stylesheet" href="fonts/fonts.css?v=12">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--orange:#f5821f;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;--line:#dedbe4;--panel:#fff;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -145,7 +145,7 @@ td.n,th.n{text-align:right}
     <div id="tab-events" hidden style="display:grid;gap:22px">
       <p class="hint">公園の掲示用ページ（開催中か・開始時刻・今の人数が自動で更新されます）：<a target="_blank" rel="noopener" href="now.html?k=fjpc5t6gz9">掲示用のページを開く</a>（タブレットやスマホに表示して置いておく）</p>
       <div class="igbox"><h2 style="margin:0">今の状態</h2><p class="lead" id="evNow" style="margin:0;font-weight:900">–</p>
-        <p class="hint">開催は、開催キーを持つ人が「開始QR」を読んで始め、「終了QR」を読んで終えます。終了QRを読み忘れても、日付が変わると自動で終わります。開始の時に撮った写真は、テロップを入れて自動でストーリーに投稿します。開催した人が、その回の場の責任者です。</p></div>
+        <p class="hint">開催は、開催キーを持つ人が「開始QR」を読んで始め、「終了QR」を読んで終えます。終了QRを読み忘れても、日付が変わると自動で終わります。開始・終了の時に撮った写真は、テロップを入れて自動でストーリーに投稿します。開催した人が、その回の場の責任者です。</p></div>
       <div><h2>開催の記録</h2><div class="tablewrap"><table id="evList"></table></div></div>
       <div class="igbox">
         <h2 style="margin:0">開催キー（人ごと）</h2>
@@ -578,10 +578,15 @@ async function loadEvents(){
   for(const e of ev.data){
     const tr=document.createElement("tr");
     const end=e.ended_at?jhm(e.ended_at):(e===open?"開催中":"（終了QRなし・日付で終了）");
-    const post=!e.story_path?"写真なし":e.story_posted_at?'<span class="ok">投稿済み</span>':e.post_error?`<span class="posterr">${esc(e.post_error)}</span>`:"投稿中／待ち";
+    const ps=(path,at,label)=>!path?`${label}：写真なし`:at?`<span class="ok">${label}：投稿済み</span>`:`${label}：まだ`;
+    const post=ps(e.story_path,e.story_posted_at,"開始")+"<br>"+(e.ended_at?ps(e.end_story_path,e.end_story_posted_at,"終了"):"終了：–")
+      +(e.post_error?`<br><span class="posterr">${esc(e.post_error)}</span>`:"");
     tr.innerHTML=`<td>${jtime(e.started_at)}〜${end}</td><td>${esc(e.host_name||"")}</td><td>${post}</td><td></td>`;
-    if(e.story_path&&!e.story_posted_at){ const b=btn("もう一度投稿","blue",async()=>{ b.disabled=true;
-      try{ await ig({retryEvent:e.id}); say("開催のお知らせを投稿しました。"); }catch(err){ alert("投稿できませんでした："+err.message); } loadEvents(); }); tr.lastChild.append(b); }
+    for(const [kind,path,at,label] of [["start",e.story_path,e.story_posted_at,"開始"],["end",e.end_story_path,e.end_story_posted_at,"終了"]]){
+      if(!path||at) continue;
+      const b=btn(`${label}のお知らせを投稿`,"blue",async()=>{ b.disabled=true;
+        try{ await ig({retryEvent:e.id,kind}); say(`${label}のお知らせを投稿しました。`); }catch(err){ alert("投稿できませんでした："+err.message); } loadEvents(); });
+      tr.lastChild.append(b); }
     t.append(tr);
   }
   if(!ev.data.length) t.insertAdjacentHTML("beforeend",'<tr><td colspan="4">まだありません。</td></tr>');

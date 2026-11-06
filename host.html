@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#faf8f4">
 <meta name="robots" content="noindex">
 <title>開催キー｜立命館OIC 鬼ごっこサークル</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=11">
+<link rel="stylesheet" href="fonts/fonts.css?v=12">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -74,7 +74,7 @@ label.btn{cursor:pointer}
       <label class="btn ghost" for="photo">撮りなおす</label>
       <button class="btn" id="go" type="button">開催する</button>
     </div>
-    <p class="small">「開催する」を押すと、すぐストーリーに投稿されます。</p>
+    <p class="small" id="goNote">「開催する」を押すと、すぐストーリーに投稿されます。</p>
   </section>
 
   <!-- 開催中 -->
@@ -89,11 +89,17 @@ label.btn{cursor:pointer}
   <section id="v-end" hidden style="display:grid;gap:16px">
     <h1 class="blue">今の開催を<br>終わりますか？</h1>
     <p class="lead" id="endInfo"></p>
-    <button class="btn blue" id="end" type="button">終了する</button>
+    <div class="box">
+      <b>終わりのお知らせ（ストーリーに自動で投稿）</b>
+      最後に公園の写真を1枚撮ってください。「参加してくれてありがとう！」「またきてね！」の文字を入れて、@onigo12345 のストーリーに投稿します。<b style="display:inline;color:var(--red)">人の顔がわかる写真は撮らないでください</b>（風景・足元・手など）。
+    </div>
+    <label class="btn blue" for="photo">写真を撮る</label>
+    <p class="small"><button type="button" id="end">写真なしで終了する（投稿しない）</button></p>
   </section>
   <section id="v-ended" hidden style="display:grid;gap:14px">
     <h1 class="blue">おつかれさま！</h1>
     <p class="lead" id="endedInfo"></p>
+    <p class="lead" id="endedPost"></p>
   </section>
   <section id="v-none" hidden style="display:grid;gap:14px">
     <h1 class="blue">今は開催して<br>いません</h1>
@@ -136,19 +142,23 @@ function showOpen(since, by, post) {
 const W = 1080, H = 1920, C = { red: "#e82c34", blue: "#1c48c4", paper: "#faf8f4", ink: "#19161e" };
 let blob = null, startedAt = new Date();
 function fit(g, t, x, y, maxW, size, wt) { let s = size; do { g.font = `${wt} ${s}px "Noto Sans JP", sans-serif`; s -= 4; } while (g.measureText(t).width > maxW && s > 24); g.fillText(t, x, y); }
-async function compose(img) {
-  await Promise.race([document.fonts.load('900 90px "Noto Sans JP"', "鬼ごっこサークル活動中！誰でもこの指とーまれ@onigo12345立命館OIC岩倉公園0123456789:〜"), new Promise((r) => setTimeout(r, 4000))]).catch(() => {});
+// start：赤い帯「鬼ごっこサークル活動中！」＋白い帯に赤字「誰でもこの指とーまれ！」
+// end  ：青い帯「参加してくれてありがとう！」＋白い帯に青字「またきてね！」
+async function compose(img, kind) {
+  await Promise.race([document.fonts.load('900 90px "Noto Sans JP"', "鬼ごっこサークル活動中！誰でもこの指とーまれ参加してくれてありがとうまたきてね@onigo12345立命館OIC岩倉公園0123456789:〜"), new Promise((r) => setTimeout(r, 4000))]).catch(() => {});
   const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
   const k = Math.max(W / img.width, H / img.height), w = img.width * k, h = img.height * k;   // 画面いっぱいに（はみ出しは切る）
   g.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+  const end = kind === "end", col = end ? C.blue : C.red;
   // 上のテロップ（Instagramの表示と重ならないよう、上端から少し下げる）
-  g.fillStyle = C.red; g.fillRect(0, 270, W, 190);
+  g.fillStyle = col; g.fillRect(0, 270, W, 190);
   g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
-  fit(g, "鬼ごっこサークル活動中！", W / 2, 365, W - 100, 104, 900);
+  fit(g, end ? "参加してくれてありがとう！" : "鬼ごっこサークル活動中！", W / 2, 365, W - 100, 104, 900);
   // 下のテロップ
   g.fillStyle = C.paper; g.fillRect(0, 1390, W, 290);
-  g.fillStyle = C.red; fit(g, "誰でもこの指とーまれ！", W / 2, 1480, W - 100, 96, 900);
-  g.fillStyle = C.ink; fit(g, `${hm(startedAt.toISOString())}〜　立命館OIC 岩倉公園`, W / 2, 1578, W - 120, 46, 700);
+  g.fillStyle = col; fit(g, end ? "またきてね！" : "誰でもこの指とーまれ！", W / 2, 1480, W - 100, end ? 110 : 96, 900);
+  const when = end ? `${hm(st.started_at)}〜${hm(new Date().toISOString())}` : `${hm(startedAt.toISOString())}〜`;
+  g.fillStyle = C.ink; fit(g, `${when}　立命館OIC 岩倉公園`, W / 2, 1578, W - 120, 46, 700);
   g.fillStyle = C.blue; fit(g, CFG.INSTAGRAM || "@onigo12345", W / 2, 1640, W - 120, 38, 700);
   return new Promise((r) => c.toBlob(r, "image/jpeg", 0.9));
 }
@@ -156,50 +166,60 @@ $("photo").addEventListener("change", (e) => {
   const f = e.target.files[0]; if (!f) return; e.target.value = "";
   const img = new Image();
   img.onload = async () => {
-    startedAt = new Date(); blob = await compose(img); URL.revokeObjectURL(img.src);
+    startedAt = new Date(); blob = await compose(img, ACT); URL.revokeObjectURL(img.src);
     const old = $("preview").src; $("preview").src = URL.createObjectURL(blob); if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+    $("go").textContent = ACT === "end" ? "終了する" : "開催する"; $("go").className = ACT === "end" ? "btn blue" : "btn";
+    $("goNote").textContent = `「${$("go").textContent}」を押すと、すぐストーリーに投稿されます。`;
     view("v-preview");
   };
   img.onerror = () => toast("写真を読み込めませんでした。もう一度撮ってください。");
   img.src = URL.createObjectURL(f);
 });
 
-async function open(withPhoto) {
+// 撮った画像を保存して、その名前を返す
+async function uploadPhoto() {
+  if (!blob) return null;
+  const rnd = [...crypto.getRandomValues(new Uint8Array(6))].map((x) => x.toString(36)).join("");
+  const path = `event_${Date.now()}_${rnd}.jpg`;
+  const up = await sb.storage.from(CFG.BUCKET || "hands").upload(path, blob, { contentType: "image/jpeg" });
+  if (up.error) throw up.error;
+  return path;
+}
+async function postStory(id, kind) {
+  const { data, error } = await sb.functions.invoke("instagram", { body: { eventStory: id, key: KEY, kind } });
+  return !error && data?.status === "ok" ? "ストーリーに投稿しました！"
+    : data?.status === "skip" ? "（このお知らせは、もう投稿されています）"
+    : "ストーリーに投稿できませんでした。管理ページからやり直せます。";
+}
+async function startEvent(withPhoto) {
   const btns = [$("go"), $("noPhoto")]; btns.forEach((b) => (b.disabled = true));
   try {
-    let path = null;
-    if (withPhoto && blob) {
-      const rnd = [...crypto.getRandomValues(new Uint8Array(6))].map((x) => x.toString(36)).join("");
-      path = `event_${Date.now()}_${rnd}.jpg`;
-      const up = await sb.storage.from(CFG.BUCKET || "hands").upload(path, blob, { contentType: "image/jpeg" });
-      if (up.error) throw up.error;
-    }
+    const path = withPhoto ? await uploadPhoto() : null;
     const r = await rpc("start_event", { p_key: KEY, p_photo: path });
     if (r.status === "badkey") return view("v-bad");
     let post = path ? "ストーリーに投稿しています…" : "";
     showOpen(r.started_at, r.opened_by || st.name, post);
-    if (path) {
-      const { data, error } = await sb.functions.invoke("instagram", { body: { eventStory: r.id, key: KEY } });
-      post = !error && data?.status === "ok" ? "ストーリーに投稿しました！"
-        : data?.status === "skip" ? "（この回のお知らせは、もう投稿されています）"
-        : "ストーリーに投稿できませんでした。管理ページからやり直せます。";
-      $("postState").textContent = post;
-    }
+    if (path) $("postState").textContent = await postStory(r.id, "start");
   } catch (e) { console.warn(e); toast("開始できませんでした。電波の良い場所でもう一度押してください。"); }
   finally { btns.forEach((b) => (b.disabled = false)); }
 }
-$("go").addEventListener("click", () => open(true));
-$("noPhoto").addEventListener("click", () => open(false));
-$("end").addEventListener("click", async () => {
-  $("end").disabled = true;
+$("go").addEventListener("click", () => (ACT === "end" ? finishEvent(true) : startEvent(true)));
+$("noPhoto").addEventListener("click", () => startEvent(false));
+$("end").addEventListener("click", () => finishEvent(false));
+async function finishEvent(withPhoto) {
+  const btns = [$("go"), $("end")]; btns.forEach((b) => (b.disabled = true));
   try {
-    const r = await rpc("end_event", { p_key: KEY });
+    const path = withPhoto ? await uploadPhoto() : null;
+    const r = await rpc("end_event", { p_key: KEY, p_photo: path });
     if (r.status === "badkey") return view("v-bad");
     if (r.status === "none") return view("v-none");
     $("endedInfo").textContent = `${hm(r.started_at)}〜${hm(r.ended_at)}　QRで参加した人：${r.joined}人`;
+    $("endedPost").textContent = path ? "ストーリーに投稿しています…" : "";
     view("v-ended");
-  } catch (e) { console.warn(e); toast("終了できませんでした。もう一度押してください。"); $("end").disabled = false; }
-});
+    if (path) $("endedPost").textContent = await postStory(r.id, "end");
+  } catch (e) { console.warn(e); toast("終了できませんでした。もう一度押してください。"); }
+  finally { btns.forEach((b) => (b.disabled = false)); }
+}
 init();
 </script>
 </body>

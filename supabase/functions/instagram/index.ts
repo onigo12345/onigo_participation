@@ -2,8 +2,8 @@
 //
 // ・ストーリー：本人が「載せる」を選び（18歳以上だけ）、運営者が管理ページで承認した画像だけを、1回だけ投稿する。
 //   承認（{approve: 画像の番号}）すると、ストーリーに投稿し、フィードの順番待ちにも入る。
-// ・開催のお知らせ：開催キーを持つ人が「開始QR」で撮った写真（テロップ入り）を、ストーリーに1回だけ投稿する。
-//   開催キーが合う時だけ（{eventStory: 開催の番号, key: 開催キー}）。
+// ・開催のお知らせ：開催キーを持つ人が「開始QR」「終了QR」で撮った写真（テロップ入り）を、ストーリーに1回ずつ投稿する。
+//   開催キーが合う時だけ（{eventStory: 開催の番号, key: 開催キー, kind: "start" | "end"}）。
 // ・フィード：GitHub Actions（tools/feed）が作った列（3枚）を、右 → 真ん中 → 左の順に投稿する。
 // ・承認・見送り・やり直し・接続の確認：管理ページから。ログイン中の管理者だけが使える。
 //
@@ -83,17 +83,19 @@ async function postStory(id: number, force = false) {
   }
 }
 
-// 開催のお知らせ（開催者が撮った写真＋テロップ）をストーリーに投稿する
-async function postEventStory(id: number, key: string) {
-  const { data: path, error } = await db.rpc("claim_event_story", { p_id: id, p_key: key });
+// 開催（start）・終了（end）のお知らせ（開催者が撮った写真＋テロップ）をストーリーに投稿する
+async function postEventStory(id: number, key: string, kind: "start" | "end" = "start") {
+  const { data: path, error } = await db.rpc("claim_event_story", { p_id: id, p_key: key, p_kind: kind });
   if (error) return { status: "error", message: error.message };
   if (!path) return { status: "skip" };
+  const done = kind === "end" ? { end_story_posted_at: "", end_story_media_id: "" } : { story_posted_at: "", story_media_id: "" };
   try {
     const media = await publish(await signedUrl(path as string), "story");
-    await db.from("events").update({ story_posted_at: new Date().toISOString(), story_media_id: media, post_error: null }).eq("id", id);
+    const [at, mid] = Object.keys(done);
+    await db.from("events").update({ [at]: new Date().toISOString(), [mid]: media, post_error: null }).eq("id", id);
     return { status: "ok", media };
   } catch (e) {
-    await db.from("events").update({ post_error: msg(e) }).eq("id", id);
+    await db.from("events").update({ post_error: (kind === "end" ? "終了：" : "開始：") + msg(e) }).eq("id", id);
     return { status: "error", message: msg(e) };
   }
 }
@@ -154,9 +156,9 @@ Deno.serve(async (req) => {
 
   // 開催キーのページから：キーが合う開催の写真だけを、1回だけ投稿する
   if (body.eventStory != null) {
-    const ev = Number(body.eventStory), key = String(body.key || "");
+    const ev = Number(body.eventStory), key = String(body.key || ""), kind = body.kind === "end" ? "end" : "start";
     if (!Number.isSafeInteger(ev) || !/^[a-z0-9]{8,40}$/.test(key)) return json({ error: "bad request" }, 400);
-    return json(await postEventStory(ev, key));
+    return json(await postEventStory(ev, key, kind));
   }
 
   const ng = await adminCheck(req);
@@ -191,11 +193,12 @@ Deno.serve(async (req) => {
     return json(await postStory(id, true));
   }
   if (body.retryEvent != null && Number.isSafeInteger(Number(body.retryEvent))) {
-    const ev = Number(body.retryEvent);
+    const ev = Number(body.retryEvent), kind = body.kind === "end" ? "end" : "start";
     const { data: e } = await db.from("events").select("host").eq("id", ev).maybeSingle();
     if (!e?.host) return json({ status: "error", message: "開催キーが見つかりません（止めたキーの回は投稿できません）" });
-    await db.from("events").update({ story_posting_at: null }).eq("id", ev).is("story_posted_at", null);
-    return json(await postEventStory(ev, e.host));
+    if (kind === "end") await db.from("events").update({ end_story_posting_at: null }).eq("id", ev).is("end_story_posted_at", null);
+    else await db.from("events").update({ story_posting_at: null }).eq("id", ev).is("story_posted_at", null);
+    return json(await postEventStory(ev, e.host, kind));
   }
   if (body.retryFeedRow != null && Number.isSafeInteger(Number(body.retryFeedRow))) {
     const row = Number(body.retryFeedRow);

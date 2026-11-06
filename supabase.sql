@@ -487,6 +487,11 @@ create table if not exists events (
   post_error       text
 );
 create index if not exists events_started on events(started_at);
+-- 終了の時のお知らせ（写真＋「参加してくれてありがとう」）
+alter table events add column if not exists end_story_path       text;
+alter table events add column if not exists end_story_posting_at timestamptz;
+alter table events add column if not exists end_story_posted_at  timestamptz;
+alter table events add column if not exists end_story_media_id   text;
 alter table hosts  enable row level security;
 alter table events enable row level security;
 revoke all on hosts, events from anon, authenticated;
@@ -532,32 +537,42 @@ begin
   insert into events(host, host_name, story_path) values (h.token, h.name, p_photo) returning * into e;
   return json_build_object('status', 'ok', 'id', e.id, 'started_at', e.started_at);
 end $$;
--- 終了QR：今開いている回を終える（どのキーの人でも終えられる）
-create or replace function public.end_event(p_key text) returns json
+-- 終了QR：今開いている回を終える（どのキーの人でも終えられる）。写真＋テロップの画像があれば、ストーリーに投稿する印を付ける
+drop function if exists public.end_event(text);
+create or replace function public.end_event(p_key text, p_photo text default null) returns json
   language plpgsql security definer set search_path = public as $$
 declare e events := public._open_event(); n int;
 begin
   if not exists (select 1 from hosts where token = p_key and active) then return json_build_object('status', 'badkey'); end if;
+  if p_photo is not null and p_photo !~ '^event_[0-9a-z_]+\.jpg$' then raise exception 'bad photo'; end if;
   if e.id is null then return json_build_object('status', 'none'); end if;
-  update events set ended_at = now() where id = e.id;
+  update events set ended_at = now(), end_story_path = p_photo where id = e.id;
   select count(*) into n from visits where visit_date = public._today() and arrived_at >= e.started_at;
-  return json_build_object('status', 'ok', 'started_at', e.started_at, 'ended_at', now(), 'joined', n);
+  return json_build_object('status', 'ok', 'id', e.id, 'started_at', e.started_at, 'ended_at', now(), 'joined', n);
 end $$;
--- サーバー（Edge Function）だけが使う：開催のストーリーを「投稿中」にして、画像の場所を返す（キーが合う時だけ・1回だけ）
-create or replace function public.claim_event_story(p_id bigint, p_key text) returns text
+-- サーバー（Edge Function）だけが使う：開催（start）・終了（end）のストーリーを「投稿中」にして、画像の場所を返す
+-- 開催キーが合う時だけ・1回だけ。終了の画像は、終了QRを読んだ人のキーでも投稿できる
+drop function if exists public.claim_event_story(bigint, text);
+create or replace function public.claim_event_story(p_id bigint, p_key text, p_kind text default 'start') returns text
   language plpgsql security definer set search_path = public as $$
 declare path text;
 begin
-  update events set story_posting_at = now(), post_error = null
-   where id = p_id and host = p_key and story_path is not null and story_posted_at is null and story_posting_at is null
-     and exists (select 1 from hosts where token = p_key and active)
-   returning story_path into path;
+  if not exists (select 1 from hosts where token = p_key and active) then return null; end if;
+  if p_kind = 'end' then
+    update events set end_story_posting_at = now(), post_error = null
+     where id = p_id and end_story_path is not null and end_story_posted_at is null and end_story_posting_at is null
+     returning end_story_path into path;
+  else
+    update events set story_posting_at = now(), post_error = null
+     where id = p_id and host = p_key and story_path is not null and story_posted_at is null and story_posting_at is null
+     returning story_path into path;
+  end if;
   return path;
 end $$;
-revoke all on function public.host_status(text), public.start_event(text, text), public.end_event(text) from public;
-grant execute on function public.host_status(text), public.start_event(text, text), public.end_event(text) to anon, authenticated;
-revoke all on function public.claim_event_story(bigint, text) from public, anon, authenticated;
-grant execute on function public.claim_event_story(bigint, text) to service_role;
+revoke all on function public.host_status(text), public.start_event(text, text), public.end_event(text, text) from public;
+grant execute on function public.host_status(text), public.start_event(text, text), public.end_event(text, text) to anon, authenticated;
+revoke all on function public.claim_event_story(bigint, text, text) from public, anon, authenticated;
+grant execute on function public.claim_event_story(bigint, text, text) to service_role;
 
 -- 誰でも読める：開催中か・今遊んでいる人数・開始時刻・よく開かれる曜日と時間帯（一人ひとりの記録は返さない）
 alter table settings drop column if exists next_event_at;
