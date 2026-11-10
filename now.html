@@ -42,7 +42,7 @@ h1{margin:0;font-size:clamp(1.8rem,7vmin,5rem);font-weight:900;color:var(--red);
     <circle cx="150" cy="200" r="140" fill="#e82c34"/><circle cx="270" cy="200" r="140" fill="#1c48c4"/>
     <circle cx="270" cy="200" r="140" fill="#9a26d9" clip-path="url(#ca)"/>
   </svg>
-  <div class="top"><span class="eyebrow">RITSUMEIKAN OIC&nbsp; ONIGOKKO CIRCLE ／ 岩倉公園</span><span class="clock" id="clock"></span></div>
+  <div class="top"><span class="eyebrow">RITSUMEIKAN OIC&nbsp; ONIGOKKO CIRCLE ／ 岩倉公園</span><span style="display:flex;gap:2vmin;align-items:center"><span class="clock" id="clock"></span><button type="button" data-lang-toggle class="inline">English</button></span></div>
   <div class="mid">
     <h1>おにごっこサークル</h1>
     <p class="now" id="nowLine">今</p>
@@ -51,20 +51,21 @@ h1{margin:0;font-size:clamp(1.8rem,7vmin,5rem);font-weight:900;color:var(--red);
     <p class="welcome" id="welcome">途中参加、大歓迎！</p>
   </div>
   <div class="foot">
-    <p class="free">QRなしでも<b>「入れて」</b>で参加OK！<small>18歳以上の人は、QRを読むと帰りに手の画像がもらえます</small></p>
+    <p class="free" data-i18n="nowFree">QRなしでも<b>「入れて」</b>で参加OK！<small>18歳以上の人は、QRを読むと帰りに手の画像がもらえます</small></p>
     <div class="qr" id="qrBox" hidden><canvas id="qr"></canvas>参加する時に読んでね</div>
   </div>
 </main>
+<script src="i18n.js?v=20261110a"></script>
 <script src="vendor/supabase.js"></script>
 <script src="vendor/qrcode.js"></script>
 <script src="config.js?v=20261107c"></script>
 <script src="visit.js?v=20261107c"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-const WD = ["日", "月", "火", "水", "木", "金", "土"];
+const tr = I18N.t;
 const jst = (d) => new Date(new Date(d).getTime() + 9 * 3600e3);
 const hm = (d) => { const j = jst(d); return `${j.getUTCHours()}:${String(j.getUTCMinutes()).padStart(2, "0")}`; };
-const md = (d) => { const j = jst(d); return `${j.getUTCMonth() + 1}月${j.getUTCDate()}日（${WD[j.getUTCDay()]}）`; };
+const md = (d) => I18N.date(jst(d));
 function clock() { $("clock").textContent = md(new Date()) + " " + hm(new Date()); }
 async function refresh() {
   try {
@@ -73,12 +74,12 @@ async function refresh() {
     if (st.open) {
       $("num").textContent = st.playing;
       $("nowLine").textContent = "開催中！ 今";
-      $("since").textContent = `今日は ${hm(st.started_at)} から開催中`;
+      $("since").textContent = tr("今日は {t} から開催中", { t: hm(st.started_at) });
       $("welcome").textContent = "途中参加、大歓迎！"; $("welcome").hidden = false;
     } else {
       const todayDone = st.last_at && md(st.last_at) === md(new Date());
       $("nowLine").textContent = todayDone ? "今日の開催は終わりました" : "本日は未開催";
-      $("since").textContent = st.often?.length ? "よく開かれるのは：" + st.often.map((x) => `${WD[x.dow]}曜の${x.slot}`).join("・") : "開催したら @onigo12345 のストーリーでお知らせします";
+      $("since").textContent = st.often?.length ? tr("よく開かれるのは：{x}", { x: I18N.often(st.often) }) : "開催したら @onigo12345 のストーリーでお知らせします";
       $("welcome").hidden = true;
     }
   } catch (e) { console.warn(e); }
@@ -93,6 +94,7 @@ if (k && /^[a-z0-9]{4,32}$/.test(k) && window.qrcode) {
   $("qrBox").hidden = false;
 }
 clock(); refresh();
+document.addEventListener("langchange", () => { clock(); refresh(); });
 setInterval(clock, 10000); setInterval(refresh, 30000);
 // 画面が消えないように（対応している端末だけ）
 async function keepAwake() { try { await navigator.wakeLock?.request("screen"); } catch {} }

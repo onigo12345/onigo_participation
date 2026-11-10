@@ -8,6 +8,7 @@ const CFG = window.APP_CONFIG || {};
 const W = 1080, H = 1920;   // Instagramストーリー（9:16）
 const C = { red: "#e82c34", blue: "#1c48c4", purple: "#9a26d9", paper: "#faf8f4", ink: "#19161e" };
 const $ = (id) => document.getElementById(id);
+const tr = (s, v) => (window.I18N ? window.I18N.t(s, v) : s);   // 英語表示の時だけ置き換える（i18n.js）
 // 古いページ（ブラウザに残ったもの）と新しいプログラムが混ざった時は、一度だけ新しく読み直す
 if (!$("byeShoot") || !$("okFeed") || !$("gender") || !$("oftenBox")) {
   let tried = false; try { tried = sessionStorage.getItem("onigokko_reload") === location.search; } catch {}
@@ -47,20 +48,23 @@ function showCamMessage(text, label, onClick) {
 }
 
 // 予期しないエラーは画面の下に短く表示する（原因を見つけやすくするため）
-window.addEventListener("error", (e) => toast("エラー：" + (e.message || "不明"), 6000));
-window.addEventListener("unhandledrejection", (e) => toast("エラー：" + (e.reason?.message || e.reason || "不明"), 6000));
+window.addEventListener("error", (e) => toast(tr("エラー：") + (e.message || tr("不明")), 6000));
+window.addEventListener("unhandledrejection", (e) => toast(tr("エラー：") + (e.reason?.message || e.reason || tr("不明")), 6000));
 
 /* ---------- 1. 帰った時刻を記録して、遊んだ時間と通算の回数を出す ---------- */
 let me = { known: false };
-function showName(name) {   // 「〇〇、またね！」。長い名前は1行に収まるまで文字を小さくする
+let myName = null;
+function showName(name) {   // 「〇〇、またね！」（英語は「See you, 〇〇!」）。長い名前は1行に収まるまで文字を小さくする
+  myName = name;
   const h = $("bye"); h.textContent = "";
-  const who = document.createElement("span"); who.className = "who"; who.textContent = name + "、";
-  h.append(who, "またね！");
+  const who = document.createElement("span"); who.className = "who"; who.dataset.noI18n = "";
+  if (window.I18N?.lang === "en") { who.textContent = name + "!"; h.append("See you,", who); }
+  else { who.textContent = name + "、"; h.append(who, "またね！"); }
   const fit = () => { who.style.fontSize = ""; let size = parseFloat(getComputedStyle(who).fontSize);
     while (who.scrollWidth > who.clientWidth && size > 14) { size *= 0.94; who.style.fontSize = size + "px"; } };
   fit(); document.fonts?.ready.then(fit); addEventListener("resize", fit);
 }
-const fmt = (m) => m == null ? "未記録" : m >= 60 ? `${Math.floor(m / 60)}<small>時間</small>${m % 60}<small>分</small>` : `${m}<small>分</small>`;
+const fmt = (m) => m == null ? tr("未記録") : m >= 60 ? tr("{h}<small>時間</small>{m}<small>分</small>", { h: Math.floor(m / 60), m: m % 60 }) : tr("{m}<small>分</small>", { m });
 const leaving = (async () => {
   let r = null;
   for (let i = 0; i < 3 && !r; i++) { try { r = await window.Visit.leave(); } catch (e) { console.warn(e); await sleep(800 * (i + 1)); } }
@@ -72,13 +76,17 @@ const leaving = (async () => {
     $("byeShoot").hidden = true; $("byeSkip").textContent = "つぎへ"; return;
   }
   myNo = r.no;
-  if (r.nickname) showName(r.nickname);
-  $("stats").hidden = false;
-  $("stay").innerHTML = fmt(r.today ? r.minutes : null);
+  stats();
   if (!r.today) $("stayNote").hidden = false;
-  $("count").innerHTML = `${r.visits}<small>回目</small>`;
   if (!r.adult) $("consent").hidden = true;   // 18歳以上の確認をしていない人の画像は、Instagramには使わない
 })();
+function stats() {   // 遊んだ時間と通算の回数（言語を切り替えた時にも作り直す）
+  if (!me.known) return;
+  if (me.nickname) showName(me.nickname);
+  $("stats").hidden = false;
+  $("stay").innerHTML = fmt(me.today ? me.minutes : null);
+  $("count").innerHTML = tr("{n}<small>回目</small>", { n: me.visits });
+}
 $("byeShoot").addEventListener("click", startCamera);
 $("byeSkip").addEventListener("click", () => startSurvey());
 
@@ -139,7 +147,7 @@ $("surveyBack").addEventListener("click", () => goQ(qi - 1));
 $("surveySkip").addEventListener("click", () => showNext());
 // 今日なにをして遊んだか（いくつでも選べる。「その他」は自由に書ける）
 const kindBtns = [...document.querySelectorAll("[data-for=play] button")];
-const picked = () => kindBtns.filter((x) => x.getAttribute("aria-pressed") === "true").map((x) => x.textContent.trim());
+const picked = () => kindBtns.filter((x) => x.getAttribute("aria-pressed") === "true").map((x) => x.dataset.v || x.textContent.trim());   // 記録は日本語のまま
 function playState() { $("playOther").hidden = !picked().includes("その他"); }
 async function submitProfile() {
   const nick = $("nickname").value.trim();
@@ -149,7 +157,7 @@ async function submitProfile() {
   try {
     const r = await window.Visit.saveProfile({ faculty: $("faculty").value, grade: $("grade").value, nickname: nick.slice(0, 20), heard: $("heard").value, gender: $("gender").value });
     if (r && r.status === "exists") {   // 同じ学部・同じニックネームの人がいる → 本人か確認
-      $("sameName").textContent = `${nick}さん（${$("faculty").value}）`;
+      $("sameName").textContent = tr("{name}さん（{faculty}）", { name: nick, faculty: tr($("faculty").value) });
       $("same").hidden = false; return false;
     }
     me.has_profile = true; return true;
@@ -175,15 +183,18 @@ $("sameNo").addEventListener("click", () => {
 });
 
 /* ---------- 最後：つぎの鬼ごっこ（日にちは決めない。よく開かれる曜日と時間帯だけ出す） ---------- */
-const WD = ["日", "月", "火", "水", "木", "金", "土"];
+let oftenList = null;
+function oftenBox() {
+  if (!oftenList?.length) return;
+  $("oftenBox").innerHTML = tr("<small>よく開かれるのは</small>{x}", { x: window.I18N ? window.I18N.often(oftenList) : "" });
+  $("oftenBox").hidden = false;
+}
 function showNext() {
   stopCamera(); show("s-next");
-  window.Visit.status().then((st) => {
-    if (!st?.often?.length) return;
-    $("oftenBox").innerHTML = "<small>よく開かれるのは</small>" + st.often.map((x) => `${WD[x.dow]}曜の${x.slot}`).join("・");
-    $("oftenBox").hidden = false;
-  }).catch((e) => console.warn("status", e));
+  window.Visit.status().then((st) => { oftenList = st?.often; oftenBox(); }).catch((e) => console.warn("status", e));
 }
+// 言語を切り替えた時は、数や名前の入った文を作り直す
+document.addEventListener("langchange", () => { stats(); oftenBox(); if (armed) { armed = false; $("forget").textContent = tr("わたしの記録を消す"); } });
 // わたしの記録を消す（2回押しで確定）
 let armed = false;
 $("forget").addEventListener("click", async () => {
@@ -192,7 +203,7 @@ $("forget").addEventListener("click", async () => {
   b.disabled = true;
   try {
     await window.Visit.forget();
-    $("nextBody").innerHTML = `<h1 class="next-h">消しました。</h1><p class="lead">アンケート・来場の記録・画像を消しました。また遊びに来てね！</p>`;
+    $("nextBody").innerHTML = tr(`<h1 class="next-h">消しました。</h1><p class="lead">アンケート・来場の記録・画像を消しました。また遊びに来てね！</p>`);
   } catch (e) { console.warn(e); b.disabled = false; b.textContent = "消せませんでした。もう一度押してね"; }
 });
 
@@ -288,7 +299,7 @@ function cameraErrorText(e) {
   if (n === "NotAllowedError") return "カメラの使用が許可されていません。iPhoneは「設定 → アプリ → Safari → カメラ」を「確認」か「許可」にして開き直すか、下のボタンからカメラアプリで撮影してね。";
   if (n === "NotReadableError") return "ほかのアプリがカメラを使っているようです。ほかのアプリを閉じてもう一度試すか、下のボタンからカメラアプリで撮影してね。";
   if (n === "NotFoundError") return "カメラが見つかりませんでした。下のボタンから写真を選んでね。";
-  return `カメラを起動できませんでした（${n || "不明"}）。検索アプリやブラウザアプリの設定によっては、カメラが起動しないことがあります。下のボタンからカメラアプリで撮影してね。`;
+  return tr("カメラを起動できませんでした（{n}）。検索アプリやブラウザアプリの設定によっては、カメラが起動しないことがあります。下のボタンからカメラアプリで撮影してね。", { n: n || tr("不明") });
 }
 // カメラアプリで撮る：iPhoneでも確実に開くよう、ボタンそのものをファイル入力のラベルにする
 function showCamFallback(text) {
@@ -746,7 +757,7 @@ $("share").addEventListener("click", async () => {
   if (!lastBlob) return;
   flushUpload();
   const file = new File([lastBlob], `onigokko_${pad(myNo)}.jpg`, { type: "image/jpeg" });
-  const text = `鬼ごっこサークルの${myNo}人目のおともだちになりました！ つぎは君も、このゆびとーまれ！ ${CFG.INSTAGRAM || ""} #立命館 #OIC #鬼ごっこサークル`;
+  const text = tr("鬼ごっこサークルの{n}人目のおともだちになりました！ つぎは君も、このゆびとーまれ！ {ig} #立命館 #OIC #鬼ごっこサークル", { n: myNo, ig: CFG.INSTAGRAM || "" });
   if (navigator.canShare?.({ files: [file] })) {
     try { await navigator.share({ files: [file], text }); window.Visit.mark("shared"); } catch (e) { if (e.name !== "AbortError") toast("シェアできませんでした。画像を保存してから投稿してね。"); }
   } else {

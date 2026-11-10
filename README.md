@@ -61,6 +61,7 @@ QRには設置した人ごとの短い合言葉（`?k=…`）が入っていて�
 | `supabase.sql` | データの入れ物と、読み書きのルールのすべて |
 | `supabase/functions/instagram/` | Instagramへの投稿（Supabase Edge Function） |
 | `tools/feed/` `.github/workflows/feed.yml` | フィードの自動投稿：使ってよい手が1列ぶんたまったら、公式投稿メーカーと同じ柄で3枚を描いて投稿を頼む（GitHub Actions・15分ごと） |
+| `i18n.js` | 英語表示（来た時・帰る時・掲示・データの説明のページ。右上のボタンで切り替え、選んだ言語はスマホの中だけに覚える。アンケートの答えは日本語のまま記録） |
 | `config.js` | 接続先（公開してよいキーだけ） |
 | `desktop/` | 管理者用のMacアプリ「おにごっこ名簿」のソース |
 | `fonts/` `vendor/` | 同梱しているフォントとライブラリ |
