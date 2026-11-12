@@ -335,7 +335,7 @@ create policy "admin reads hands"   on storage.objects for select to authenticat
 create policy "admin deletes hands" on storage.objects for delete to authenticated using (bucket_id = 'hands' and public.is_admin());
 drop policy if exists "admin uploads hands" on storage.objects;
 create policy "admin uploads hands" on storage.objects for insert to authenticated
-  with check (bucket_id = 'hands' and public.is_admin() and name ~ '^[0-9a-z_]+\.png$');
+  with check (bucket_id = 'hands' and public.is_admin() and name ~ '^([0-9a-z_]+\.png|feed_r[0-9]+_[0-2]_[0-9]+\.jpg)$');
 
 -- ---------- Instagramへの投稿 ----------
 -- ストーリー：参加者が「参加する！」の時に「載せる」を選んだ画像だけを、1日1回、自動で投稿する
@@ -466,6 +466,35 @@ alter table settings add column if not exists feed_caption_first text not null d
 alter table settings add column if not exists feed_caption_blank text not null default
   '#鬼ごっこサークル
 #立命館大学';
+-- 管理ページの「今すぐ投稿する」：管理者のブラウザで描いた列を記録する（GitHub Actions の run.mjs と同じ記録の仕方）
+-- 投稿していない列がある時は作らない。途中の列（左があいている列）を埋める時は p_partial
+create or replace function public.admin_feed_row(p_row int, p_partial boolean, p_open smallint, p_posts jsonb, p_pattern jsonb, p_next_row int) returns text
+  language plpgsql security definer set search_path = public as $$
+declare p jsonb;
+begin
+  if not public.is_admin() then raise exception 'not admin'; end if;
+  if exists (select 1 from feed_rows where status <> 'posted') then return 'busy'; end if;
+  if p_partial then
+    if not exists (select 1 from feed_rows where row_no = p_row and open_slots > 0) then return 'stale'; end if;
+    update feed_rows set status = 'ready', open_slots = p_open, posted_at = null where row_no = p_row;
+  else
+    if exists (select 1 from feed_rows where row_no = p_row) then return 'stale'; end if;
+    insert into feed_rows(row_no, status, open_slots) values (p_row, 'ready', p_open);
+  end if;
+  for p in select * from jsonb_array_elements(p_posts) loop
+    if (p->>'path') !~ '^feed_r[0-9]+_[0-2]_[0-9]+\.jpg$' then raise exception 'bad path'; end if;
+    insert into feed_posts(row_no, pos, ord, path, submission_id, participant_no, caption)
+      values (p_row, (p->>'pos')::smallint, (p->>'ord')::smallint, p->>'path', (p->>'submission_id')::bigint, (p->>'participant_no')::bigint, coalesce(p->>'caption', ''));
+    if p->>'submission_id' is not null then update submissions set feed_row = p_row where id = (p->>'submission_id')::bigint; end if;
+  end loop;
+  insert into feed_state(id, pattern, next_row, updated_at) values (1, p_pattern, p_next_row, now())
+    on conflict (id) do update set pattern = excluded.pattern, next_row = excluded.next_row, updated_at = now();
+  update settings set feed_force = false where id = 1;
+  return 'ok';
+end $$;
+revoke all on function public.admin_feed_row(int, boolean, smallint, jsonb, jsonb, int) from public, anon;
+grant execute on function public.admin_feed_row(int, boolean, smallint, jsonb, jsonb, int) to authenticated;
+
 -- 管理ページの「今ある手で次の列を投稿する」：次の1回だけ、3人に満たなくても列を作る（足りない所は手なし）
 alter table settings add column if not exists feed_force boolean not null default false;
 grant update (auto_feed, feed_force, feed_caption, feed_caption_first, feed_caption_blank) on settings to authenticated;

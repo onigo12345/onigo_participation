@@ -122,7 +122,7 @@ td.n,th.n{text-align:right}
       <h2 style="margin:0">フィード（3枚で1列・糸の柄がつながる）</h2>
       <label class="toggle"><input type="checkbox" id="autoFeed"> 承認済みの「投稿にも使ってよい」の手が1列ぶんたまったら、自動で投稿する</label>
       <p class="hint" id="feedInfo"></p>
-      <p class="hint">1列目は真ん中に最初に届いた手（創始者）だけ、2列目からは参加番号の小さい順に3人分を右・真ん中・左に並べ（番号の小さい人から先に投稿）、公式投稿メーカーと同じ柄で描きます。投稿は右 → 真ん中 → 左の順（プロフィールで左上に来るのが左）。確認は15分ごとです。</p>
+      <p class="hint">1列目は真ん中に最初に届いた手（創始者）だけ、2列目からは参加番号の小さい順に3人分を右・真ん中・左に並べ（番号の小さい人から先に投稿）、公式投稿メーカーと同じ柄で描きます。投稿は右 → 真ん中 → 左の順（プロフィールで左上に来るのが左）。自動の確認は15分ごとの予定ですが、GitHubの都合で数時間おきになることがあります。すぐ投稿したい時は「今すぐ投稿する」を押してください。</p>
       <label>投稿の文章（2列目から。{no} が参加番号になります。ストーリー画像の「◯人目のおともだち」と同じ番号です）<textarea id="capMain" rows="9"></textarea></label>
       <label>1列目・真ん中（創始者の手）の文章<textarea id="capFirst" rows="8"></textarea></label>
       <label>1列目・左右（手なし）の文章<textarea id="capBlank" rows="5"></textarea></label>
@@ -241,13 +241,72 @@ $("login").addEventListener("submit",async e=>{
 $("logout").addEventListener("click",async()=>{ await sb.auth.signOut(); location.reload(); });
 $("reload").addEventListener("click",load);
 $("ahGo").addEventListener("click",addStaffHand);
-$("feedForce").addEventListener("click",async()=>{
-  if(!$("autoFeed").checked) return alert("先に「フィードの自動投稿」をオンにしてください。");
-  if(!confirm("3人に満たないまま、今ある手を右から並べて先に投稿します。あいた左側は、次に承認された人の手で埋めて投稿し、3枚で柄がつながります。よいですか？")) return;
-  const {error}=await sb.from("settings").update({feed_force:true}).eq("id",1);
-  if(error) return alert("予約できませんでした（"+error.message+"）。supabase.sql を実行し直してください。");
-  loadFeed();
-});
+$("feedForce").addEventListener("click",()=>feedNow());
+// ---------- 今すぐ投稿する：このブラウザで列を描いて、すぐ投稿する（GitHub Actions の run.mjs と同じ並べ方・同じ柄） ----------
+const blobToData=b=>new Promise((ok,ng)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=ng; r.readAsDataURL(b); });
+let renderFrame=null;
+async function renderer(){
+  if(renderFrame?.contentWindow?.ready) return renderFrame.contentWindow;
+  renderFrame?.remove(); renderFrame=document.createElement("iframe");
+  renderFrame.style.cssText="position:fixed;left:-9999px;top:0;width:10px;height:10px;border:0";
+  renderFrame.src="tools/feed/render.html?v=20261112c"; document.body.append(renderFrame);
+  for(let i=0;i<200&&!renderFrame.contentWindow?.ready;i++) await new Promise(r=>setTimeout(r,100));
+  if(!renderFrame.contentWindow?.ready) throw new Error("柄を描く準備ができませんでした");
+  return renderFrame.contentWindow;
+}
+async function feedNow(){
+  const fb=$("feedForce"), label=fb.textContent;
+  const step=t=>{ fb.textContent=t; say(t); };
+  fb.disabled=true;
+  try{
+    const [stR,rowsR,stateR]=await Promise.all([
+      sb.from("settings").select("feed_caption,feed_caption_first,feed_caption_blank").eq("id",1).maybeSingle(),
+      sb.from("feed_rows").select("row_no,status,open_slots").order("row_no"),
+      sb.from("feed_state").select("*").eq("id",1).maybeSingle()]);
+    for(const r of [stR,rowsR,stateR]) if(r.error) throw r.error;
+    const st=stR.data, rows=rowsR.data||[], state=stateR.data;
+    if(rows.some(r=>r.status!=="posted")) throw new Error("投稿が終わっていない列があります。表の「もう一度投稿」から先に投稿してください");
+    const partial=rows.find(r=>r.open_slots>0)||null;
+    const row=partial?partial.row_no:state?.next_row||1;
+    // 使ってよい手：承認済み・投稿にも使ってよい・まだ列に使っていない人の、最後に選んだ画像（参加番号の小さい順）
+    const used=new Set(all.filter(r=>r.feed_row!=null).map(r=>r.participant_no)), latestOk=new Map();
+    for(const r of [...all].sort((a,b)=>a.created_at.localeCompare(b.created_at)))
+      if(r.feed_ok&&r.approved_at&&r.participant_no!=null&&!used.has(r.participant_no)) latestOk.set(r.participant_no,r);
+    const queue=[...latestOk.values()].sort((a,b)=>a.participant_no-b.participant_no);
+    if(!queue.length) throw new Error("承認済みの「投稿にも使ってよい」の手がありません");
+    let picks, openAfter=0;
+    if(partial){ const pos=partial.open_slots-1; picks=[0,1,2].map(i=>i===pos?queue[0]:null); openAfter=pos; }
+    else if(row===1) picks=[null,queue[0],null];
+    else if(queue.length>=3) picks=queue.slice(0,3).reverse();
+    else { openAfter=3-queue.length; picks=[...Array(openAfter).fill(null),...queue.slice().reverse()]; }
+    const outPos=[0,1,2].filter(i=>row===1||picks[i]);
+    const who=[2,1,0].filter(i=>picks[i]).map(i=>"No."+pad(picks[i].participant_no)).join(" → ");
+    if(!confirm(`${row}列目に ${who} を投稿します${openAfter?`（あいた${["","左","左と真ん中"][openAfter]}は、次の人の手で埋めます）`:""}。よいですか？`)){ fb.disabled=false; return; }
+    step("手の画像を読み込んでいます…");
+    const hands=await Promise.all(picks.map(async p=>{ if(!p) return null;
+      const {data,error}=await sb.storage.from(BUCKET).download(p.image_path); if(error) throw error;
+      return {src:await blobToData(data), no:p.participant_no}; }));
+    step("柄を描いています…");
+    const pattern=state?.pattern||await (await fetch("tools/feed/seed_pattern.json")).json();
+    const win=await renderer();
+    const out=await win.renderRow({row,pattern:JSON.parse(JSON.stringify(pattern)),hands});
+    step("画像を保存しています…");
+    const ORDER=[3,2,1], stamp=Date.now(), posts=[];
+    const cap=i=>row===1?(i===1?st.feed_caption_first:st.feed_caption_blank):!picks[i]?st.feed_caption_blank:String(st.feed_caption||"").replaceAll("{no}",String(picks[i].participant_no));
+    for(const i of outPos){
+      const path=`feed_r${row}_${i}_${stamp}.jpg`, blob=await (await fetch(out.tiles[i])).blob();
+      const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:"image/jpeg"}); if(up.error) throw up.error;
+      posts.push({pos:i,ord:ORDER[i],path,submission_id:picks[i]?.id??null,participant_no:picks[i]?.participant_no??null,caption:cap(i)||""});
+    }
+    const {data:res,error}=await sb.rpc("admin_feed_row",{p_row:row,p_partial:!!partial,p_open:openAfter,p_posts:posts,p_pattern:out.pattern,p_next_row:partial?(state?.next_row||row+1):row+1});
+    if(error){ await sb.storage.from(BUCKET).remove(posts.map(p=>p.path)); throw error; }
+    if(res!=="ok"){ await sb.storage.from(BUCKET).remove(posts.map(p=>p.path)); throw new Error(res==="busy"?"投稿が終わっていない列があります":"ほかの所で列が作られました。再読み込みしてください"); }
+    step("Instagramに投稿しています…（1枚ごとに少し待ちます）");
+    const r=await ig({feedRow:row});
+    say(r?.status==="ok"?`${row}列目を投稿しました（${who}）。`:`${row}列目を記録しました。投稿の状態は表で確認してください。`);
+    await load();
+  }catch(e){ console.warn(e); say("投稿できませんでした（"+(e.message||e)+"）",true); fb.textContent=label; fb.disabled=false; }
+}
 $("reload2").addEventListener("click",()=>loadData(true));
 $("filter").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; view=b.dataset.v;
   document.querySelectorAll("#filter button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render(); });
@@ -379,14 +438,15 @@ async function loadFeed(){
   const used=new Set(all.filter(r=>r.feed_row!=null).map(r=>r.participant_no));
   const n=[...waiting].filter(x=>!used.has(x)).length;
   if(part) $("feedInfo").textContent=`${part.row_no}列目の${["左","真ん中","右"][part.open_slots-1]}があいています。次に承認された「投稿にも使ってよい」の手が、ここに入ってすぐ投稿されます（今：${n}人分）`; else
-  $("feedInfo").textContent=`次は${next}列目。承認済みの「投稿にも使ってよい」の手：${n}人分（あと${Math.max(0,need-n)}人分で投稿）`+(st.feed_force?"　→ 今ある手で次の列を作る予約中（15分以内）":"");
-  const fb=$("feedForce"), can=!part&&next>1&&n>=1&&n<need;
-  fb.hidden=false; fb.disabled=!can||!!st.feed_force;
-  fb.textContent=st.feed_force?"予約しました（15分以内に投稿します）"
-    :part?"今の枚数分だけ投稿する（あいている列が埋まるまで使えません）"
-    :n>=need?"今の枚数分だけ投稿する（3人分そろっているので自動で投稿されます）"
-    :n<1?"今の枚数分だけ投稿する（承認済みの手がまだありません）"
-    :`今の枚数分だけ投稿する（${n}人分。右から並べ、あいた左は次の人の手で埋める）`;
+  $("feedInfo").textContent=`次は${next}列目。承認済みの「投稿にも使ってよい」の手：${n}人分（あと${Math.max(0,need-n)}人分で投稿）`;
+  const busy=(rows.data||[]).some(r=>r.status!=="posted"), fb=$("feedForce");
+  fb.hidden=false; fb.className="btn blue"; fb.disabled=busy||n<1;
+  fb.textContent=busy?"今すぐ投稿する（投稿が終わっていない列があります）"
+    :n<1?"今すぐ投稿する（承認済みの手がまだありません）"
+    :part?`今すぐ投稿する（${part.row_no}列目のあいているマスに1人分）`
+    :next===1?"今すぐ投稿する（1列目）"
+    :n>=3?"今すぐ投稿する（3人分で1列）"
+    :`今の枚数分だけ今すぐ投稿する（${n}人分。右から並べ、あいた左は次の人の手で埋める）`;
   const t=$("feedRows"); t.innerHTML="<tr><th>列</th><th>状態</th><th>投稿した順（番号の小さい順）</th><th></th></tr>";
   for(const r of rows.data||[]){
     const ps=(posts.data||[]).filter(p=>p.row_no===r.row_no).sort((a,b)=>a.pos-b.pos);
