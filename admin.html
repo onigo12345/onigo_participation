@@ -101,10 +101,6 @@ td.n,th.n{text-align:right}
       <button type="button" role="tab" data-tab="qr" aria-selected="false">QRをつくる</button>
     </nav>
     <div id="tab-images" style="display:grid;gap:18px">
-    <details class="igbox" id="addHandBox"><summary style="cursor:pointer;font-weight:900">運営者が撮った手を追加する（フィード用・ストーリーには投稿しない）</summary>
-      <p class="hint" style="margin:0">本人から投稿の了承をもらった「手の素材」（背景が透明なPNG）を、その人の参加番号に結びつけて追加します。「投稿にも使ってよい・承認済み」の状態で入り、フィードの自動投稿で参加番号の順に並びます。ストーリーには投稿しません。来場の記録・人数・アンケートは変わりません。</p>
-      <div class="tools"><input id="ahNo" type="number" min="1" inputmode="numeric" placeholder="参加番号" style="font:inherit;padding:8px;border:1px solid var(--line);width:120px"><input id="ahFile" type="file" accept="image/png"><button class="btn blue" id="ahGo" type="button">追加する</button><span class="hint" id="ahState"></span></div>
-    </details>
     <div class="bar">
       <div class="stats">
         <div class="stat"><b id="sPeople">–</b><span>参加者（番号を発行した数）</span></div>
@@ -143,6 +139,10 @@ td.n,th.n{text-align:right}
     <p class="hint">1人につき、最後に作った画像（本人が選んだ見え方）を表示しています。左が手の素材（公式投稿メーカーに入れるもの）、右がストーリー画像です。公式の投稿に使えるのは「投稿：使ってよい」の画像だけです（「手の素材をまとめて保存」もその画像だけを保存します）。「掲載をやめる」は、その番号の画像と記録をすべて削除します（元に戻せません）。</p>
     <div class="status" id="status" role="status"></div>
     <div class="grid" id="grid"></div>
+    <details id="addHandBox" style="font-size:.8rem;color:var(--sub,#6d6878);margin-top:24px"><summary style="cursor:pointer">運営者が撮った手を追加する（めったに使いません）</summary>
+      <p class="hint" style="margin:8px 0">本人から投稿の了承をもらった「手の素材」（背景が透明なPNG）を、その人の参加番号に結びつけて追加します。「投稿にも使ってよい・承認済み」の状態で入り、フィードの自動投稿で参加番号の順に並びます。ストーリーには投稿しません。来場の記録・人数・アンケートは変わりません。</p>
+      <div class="tools"><input id="ahNo" type="number" min="1" inputmode="numeric" placeholder="参加番号" style="font:inherit;padding:8px;border:1px solid var(--line);width:120px"><input id="ahFile" type="file" accept="image/png"><button class="btn ghost" id="ahGo" type="button">追加する</button><span class="hint" id="ahState"></span></div>
+    </details>
     </div>
 
     <!-- 来場データ -->
