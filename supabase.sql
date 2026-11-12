@@ -477,6 +477,8 @@ create table if not exists feed_rows (
   created_at timestamptz not null default now(),
   posted_at timestamptz
 );
+-- 途中まで投稿した列：左側のあいているマスの数（「今ある手で次の列を投稿する」で、右から先に投稿した時）。次の手で右から順に埋める
+alter table feed_rows add column if not exists open_slots smallint not null default 0;
 create table if not exists feed_posts (
   id bigint generated always as identity primary key,
   row_no int not null references feed_rows(row_no) on delete cascade,

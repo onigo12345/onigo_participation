@@ -39,7 +39,10 @@ if (open.length && !DRY) {
 }
 
 const state = must(await db.from("feed_state").select("*").eq("id", 1).maybeSingle(), "feed_state");
-const row = state?.next_row || 1;
+// 途中まで投稿した列（「今ある手で次の列を投稿する」で、右から先に投稿して左側をあけてある列）があれば、新しい列より先にそこを埋める
+// あいているのは左側（pos が open_slots より小さいマス）。1人ずつ、右に近いマスから埋めて投稿する（プロフィールで左上が最新になる順）
+const partial = DRY ? null : (must(await db.from("feed_rows").select("row_no, open_slots").gt("open_slots", 0).order("row_no").limit(1), "feed_rows（途中の列）") || [])[0] || null;
+const row = partial ? partial.row_no : state?.next_row || 1;
 const pattern = state?.pattern || JSON.parse(fs.readFileSync(path.join(ROOT, "tools/feed/seed_pattern.json"), "utf8"));
 
 // ---------- 使ってよい手を、参加番号の順に（1人1回・本人が最後に選んだ見え方。帰った順ではなく、来た順の番号でそろえる） ----------
@@ -50,14 +53,22 @@ const used = new Set(subs.filter((s) => s.feed_row != null).map((s) => s.partici
 const latest = new Map();
 for (const s of subs) if (!used.has(s.participant_no) && s.participant_no != null) latest.set(s.participant_no, s);
 const queue = [...latest.values()].sort((a, b) => a.participant_no - b.participant_no);
-const force = !DRY && row > 1 && !!st.feed_force;   // 管理ページの「今ある手で次の列を投稿する」：3人に満たなくても、足りない所は手なしで作る
-const need = DRY ? 1 : row === 1 ? 1 : force ? 1 : 3;
+const force = !DRY && !partial && row > 1 && !!st.feed_force;   // 管理ページの「今ある手で次の列を投稿する」：3人に満たなくても、今ある手を右から並べて先に投稿し、左はあとで埋める
+const need = DRY || partial ? 1 : row === 1 ? 1 : force ? 1 : 3;
 console.log(`${row}列目：使ってよい手 ${queue.length}人分（必要 ${need}人分）${DRY ? "【試運転】" : ""}`);
 if (queue.length < need) process.exit(0);
 
 // 1列目：真ん中に創始者（番号のいちばん小さい手）だけ。2列目から：左・真ん中・右に参加番号の小さい順
-const picks = DRY ? [queue[1 % queue.length], queue[0], queue[2 % queue.length]]
-  : row === 1 ? [null, queue[0], null] : [0, 1, 2].map((i) => queue[i] || null);
+// 途中の列を埋める時：あいているマスのうち、いちばん右のマスに1人だけ
+// 今ある手で作る時（3人に満たない）：右から詰めて置き、左のあいたマスはあとで埋める
+let picks, openAfter = 0;
+if (DRY) picks = [queue[1 % queue.length], queue[0], queue[2 % queue.length]];
+else if (partial) { const pos = partial.open_slots - 1; picks = [0, 1, 2].map((i) => (i === pos ? queue[0] : null)); openAfter = pos; }
+else if (row === 1) picks = [null, queue[0], null];
+else if (queue.length >= 3) picks = queue.slice(0, 3);
+else { const k = queue.length; openAfter = 3 - k; picks = [...Array(openAfter).fill(null), ...queue.slice(0, k)]; }
+// 投稿する画像：1列目は3枚とも（左右は手なし）。それ以外は手のあるマスだけ
+const outPos = [0, 1, 2].filter((i) => row === 1 || picks[i]);
 
 // ---------- 手の画像を読み込む ----------
 const hands = [];
@@ -82,6 +93,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage();
 await page.goto(`http://localhost:${server.address().port}/tools/feed/render.html`);
 await page.waitForFunction(() => window.ready);
+// 途中の列を埋める時は、今の柄（その列の糸と丸をすでに含む）でもう一度その列を描き、埋めるマスだけを使う＝前に投稿した2枚とつながる
 const out = await page.evaluate((args) => window.renderRow(args), { row: DRY ? Math.max(2, row) : row, pattern, hands });
 await browser.close(); server.close();
 
@@ -102,19 +114,20 @@ const caption = (i) => {
 };
 const stamp = Date.now();
 const posts = [];
-for (let i = 0; i < 3; i++) {
+for (const i of outPos) {
   const p = `feed_r${row}_${i}_${stamp}.jpg`;
   const bytes = Buffer.from(out.tiles[i].split(",")[1], "base64");
   must(await db.storage.from(BUCKET).upload(p, bytes, { contentType: "image/jpeg" }), "upload");
   posts.push({ row_no: row, pos: i, ord: ORDER[i], path: p, submission_id: picks[i]?.id ?? null,
     participant_no: picks[i]?.participant_no ?? null, caption: caption(i) || "" });
 }
-must(await db.from("feed_rows").insert({ row_no: row, status: "ready" }), "feed_rows insert");
+if (partial) must(await db.from("feed_rows").update({ status: "ready", open_slots: openAfter, posted_at: null }).eq("row_no", row), "feed_rows update");
+else must(await db.from("feed_rows").insert({ row_no: row, status: "ready", open_slots: openAfter }), "feed_rows insert");
 must(await db.from("feed_posts").insert(posts), "feed_posts insert");
 for (const p of picks) if (p) must(await db.from("submissions").update({ feed_row: row }).eq("id", p.id), "submissions");
 if (force) must(await db.from("settings").update({ feed_force: false }).eq("id", 1), "settings");
-must(await db.from("feed_state").upsert({ id: 1, pattern: out.pattern, next_row: row + 1, updated_at: new Date().toISOString() }), "feed_state");
-console.log(`${row}列目を作りました：` + picks.map((p, i) => `${POS[i]}=${p ? "No." + p.participant_no : "手なし"}`).join(" / "));
+must(await db.from("feed_state").upsert({ id: 1, pattern: out.pattern, next_row: partial ? state.next_row : row + 1, updated_at: new Date().toISOString() }), "feed_state");
+console.log(`${row}列目を作りました：` + picks.map((p, i) => `${POS[i]}=${p ? "No." + p.participant_no : i < openAfter ? "あとで" : "手なし"}`).join(" / "));
 
 await askPost(row);
 
