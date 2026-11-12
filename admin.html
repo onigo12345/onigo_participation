@@ -542,12 +542,14 @@ function qrPoster(q, arrive, F, C) {
   const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
   const band = arrive ? C.red : C.blue;
   g.scale(S, S); g.fillStyle = C.paper; g.fillRect(0, 0, 1000, h); g.textBaseline = "top";
-  g.fillStyle = C.ink; g.font = F(700, 22); g.fillText("RITSUMEIKAN OIC  ONIGOKKO CIRCLE", 60, 58);
-  let fs = 176; g.font = F(900, fs);
-  const wide = Math.max(g.measureText("おにごっこ").width, g.measureText("サークル").width);
+  g.fillStyle = C.ink; g.font = F(900, 30); g.fillText("立命館OIC 鬼ごっこサークル", 60, 52);
+  g.font = F(700, 18); g.fillText("RITSUMEIKAN OIC  ONIGOKKO CIRCLE", 62, 94);
+  // いちばん大きな文字：来た時「いーれて！」／帰る時「またね！」（2枚で同じ大きさにそろえる）
+  let fs = 210; g.font = F(900, fs);
+  const wide = g.measureText("いーれて！").width;
   if (wide > 880) { fs *= 880 / wide; g.font = F(900, fs); }
-  g.fillStyle = band; g.fillText("おにごっこ", 56, 100); g.fillText("サークル", 56, 100 + fs * 1.06);
-  const bandTop = h - 250, top = 110 + fs * 2.12 + 20, size = Math.min(660, bandTop - 36 - top);
+  g.fillStyle = band; g.fillText(arrive ? "いーれて！" : "またね！", 52, 132);
+  const bandTop = h - 250, top = 132 + fs * 1.12 + 24, size = Math.min(700, bandTop - 36 - top);
   g.fillStyle = band; g.fillRect(0, bandTop, 1000, h - bandTop);
   g.fillStyle = C.paper; g.textAlign = "center";
   const line = (t, wt, size, y) => { g.font = F(wt, size); const w = g.measureText(t).width; if (w > 900) g.font = F(wt, size * 900 / w); g.fillText(t, 500, y); };
@@ -612,7 +614,7 @@ $("hostAdd").addEventListener("click",async()=>{
 });
 // 開始QR・終了QRを1枚のカードにする（その人だけに渡す）
 async function showHostQR(k){
-  try{ await Promise.all([700,900].map(w=>document.fonts.load(`${w} 40px "Noto Sans JP"`,"開始終了QR鬼ごっこサークル開催キーさんの人に見せないでください"))); }catch{}
+  try{ await Promise.all([700,900].map(w=>document.fonts.load(`${w} 40px "Noto Sans JP"`,"開始終了QR鬼ごっこサークル開催キーさんの人に見せないでください立命館OIC公園に貼ったりしを始める時読む"))); }catch{}
   const box=$("hostQR"); box.hidden=false; box.innerHTML="";
   const W=1200,H=760,c=document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
   g.fillStyle="#faf8f4"; g.fillRect(0,0,W,H); g.fillStyle="#19161e"; g.textBaseline="top";
@@ -626,15 +628,41 @@ async function showHostQR(k){
     g.fillStyle="#fff"; g.font='900 46px "Noto Sans JP",sans-serif'; g.textAlign="center"; g.fillText(label,x+260,y+480); g.textAlign="left";
   });
   const f=document.createElement("figure"), b2=btn("画像で保存","blue",()=>c.toBlob(bl=>saveBlob(bl,`host_${k.name}.png`)));
-  c.style.width="600px"; c.style.maxWidth="100%"; f.append(c,b2); box.append(f); box.scrollIntoView({behavior:"smooth",block:"start"});
+  const b3=btn("A4で印刷用に保存（A5×2枚）","ghost",()=>hostA4(k).toBlob(bl=>saveBlob(bl,`host_${k.name}_A4.png`)));
+  c.style.width="600px"; c.style.maxWidth="100%"; f.append(c,b2,b3); box.append(f); box.scrollIntoView({behavior:"smooth",block:"start"});
 }
 
+// 開催キーの印刷用：A4横（300dpi）に、A5縦の枠に入る大きさのカードを2枚（開始・終了）。参加者用より小さめ。真ん中で切る
+function hostA4(k){
+  const MM=2480/210, W=Math.round(297*MM), H=2480, c=document.createElement("canvas"); c.width=W; c.height=H;
+  const g=c.getContext("2d"), F=(w,s)=>`${w} ${s*MM}px "Noto Sans JP",sans-serif`;
+  g.fillStyle="#fff"; g.fillRect(0,0,W,H);
+  g.strokeStyle="#aaa"; g.lineWidth=2; g.setLineDash([24,18]); g.beginPath(); g.moveTo(W/2,0); g.lineTo(W/2,H); g.stroke(); g.setLineDash([]);
+  [["開始QR","start","#e82c34","開催を始める時に読む"],["終了QR","end","#1c48c4","開催を終わる時に読む"]].forEach(([label,a,col,how],i)=>{
+    const cw=112, ch=160, x0=(i*148.5+(148.5-cw)/2)*MM, y0=((210-ch)/2)*MM, cx=x0+cw*MM/2;   // カード（mm）
+    g.fillStyle="#faf8f4"; g.fillRect(x0,y0,cw*MM,ch*MM);
+    g.fillStyle=col; g.fillRect(x0,y0,cw*MM,40*MM);
+    g.textAlign="center"; g.textBaseline="middle";
+    g.fillStyle="#fff"; g.font=F(700,3.6); g.fillText("立命館OIC 鬼ごっこサークル　開催キー",cx,y0+9*MM);
+    g.font=F(900,17); g.fillText(label,cx,y0+25*MM);
+    g.fillStyle="#19161e"; g.font=F(900,6.5); g.fillText(`${k.name}さん`,cx,y0+50*MM);
+    const q=qrcode(0,"M"); q.addData(BASE+"host.html?h="+k.token+"&a="+a); q.make();
+    const n=q.getModuleCount(), cell=Math.floor(72*MM/(n+4)), qs=cell*(n+4), qx=Math.round(cx-qs/2), qy=Math.round(y0+57*MM);
+    g.fillStyle="#fff"; g.fillRect(qx,qy,qs,qs); g.fillStyle="#19161e";
+    for(let yy=0;yy<n;yy++) for(let xx=0;xx<n;xx++) if(q.isDark(yy,xx)) g.fillRect(qx+(xx+2)*cell,qy+(yy+2)*cell,cell,cell);
+    g.fillStyle=col; g.font=F(900,6); g.fillText(how,cx,qy+qs+9*MM);
+    g.fillStyle="#6d6878"; g.font=F(700,3.4); g.fillText("人に見せたり、公園に貼ったりしないでください",cx,y0+ch*MM-8*MM);
+    g.strokeStyle=col; g.lineWidth=0.8*MM; g.strokeRect(x0,y0,cw*MM,ch*MM);
+  });
+  g.textAlign="left"; g.textBaseline="alphabetic";
+  return c;
+}
 function qrCard(url,kind){
   const q=qrcode(0,"H"); q.addData(url); q.make();
   return qrPoster(q,kind==="arrive",(w,s)=>`${w} ${s}px "Noto Sans JP",sans-serif`,{red:"#e82c34",blue:"#1c48c4",ink:"#19161e",paper:"#faf8f4"});
 }
 async function showQR(token,name){
-  try{ await Promise.all([500,700,900].map(w=>document.fonts.load(`${w} 40px "Noto Sans JP"`,"おにごっこサークル来帰大学"))); }catch{}
+  try{ await Promise.all([500,700,900].map(w=>document.fonts.load(`${w} 40px "Noto Sans JP"`,"おにごっこサークル来帰大学いーれて！またね！立命館OIC鬼"))); }catch{}
   const box=$("qrShow"); box.hidden=false; box.innerHTML="";
   for(const [kind,label,url] of [["arrive","来た時のQR",BASE+"?k="+token],["leave","帰る時のQR",BASE+"bye.html?k="+token]]){
     const c=qrCard(url,kind), f=document.createElement("figure");
