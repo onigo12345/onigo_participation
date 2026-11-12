@@ -58,15 +58,16 @@ const need = DRY || partial ? 1 : row === 1 ? 1 : force ? 1 : 3;
 console.log(`${row}列目：使ってよい手 ${queue.length}人分（必要 ${need}人分）${DRY ? "【試運転】" : ""}`);
 if (queue.length < need) process.exit(0);
 
-// 1列目：真ん中に創始者（番号のいちばん小さい手）だけ。2列目から：左・真ん中・右に参加番号の小さい順
+// 1列目：真ん中に創始者（番号のいちばん小さい手）だけ。2列目から：右・真ん中・左に参加番号の小さい順
+// （投稿は右 → 真ん中 → 左の順。番号の小さい人から先に投稿され、プロフィールでは左上がいちばん新しい番号になる）
 // 途中の列を埋める時：あいているマスのうち、いちばん右のマスに1人だけ
 // 今ある手で作る時（3人に満たない）：右から詰めて置き、左のあいたマスはあとで埋める
 let picks, openAfter = 0;
 if (DRY) picks = [queue[1 % queue.length], queue[0], queue[2 % queue.length]];
 else if (partial) { const pos = partial.open_slots - 1; picks = [0, 1, 2].map((i) => (i === pos ? queue[0] : null)); openAfter = pos; }
 else if (row === 1) picks = [null, queue[0], null];
-else if (queue.length >= 3) picks = queue.slice(0, 3);
-else { const k = queue.length; openAfter = 3 - k; picks = [...Array(openAfter).fill(null), ...queue.slice(0, k)]; }
+else if (queue.length >= 3) picks = queue.slice(0, 3).reverse();
+else { const k = queue.length; openAfter = 3 - k; picks = [...Array(openAfter).fill(null), ...queue.slice(0, k).reverse()]; }
 // 投稿する画像：1列目は3枚とも（左右は手なし）。それ以外は手のあるマスだけ
 const outPos = [0, 1, 2].filter((i) => row === 1 || picks[i]);
 
