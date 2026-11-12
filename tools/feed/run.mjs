@@ -1,6 +1,6 @@
 // フィードの自動投稿（GitHub Actions で15分ごとに動く）
 //
-// 1. 本人が「投稿にも使ってよい」を選び、運営者が承認した手を、届いた順に集める（1人1回まで）
+// 1. 本人が「投稿にも使ってよい」を選び、運営者が承認した手を、参加番号の小さい順に集める（1人1回まで）
 // 2. 1列ぶん（1列目は創始者の手1つ、2列目からは3人分）たまったら、公式投稿メーカーと同じ柄で3枚を描く
 // 3. 画像を保存して「投稿待ち」の列を作り、Supabase の Edge Function に投稿を頼む（右 → 真ん中 → 左の順）
 //
@@ -42,19 +42,19 @@ const state = must(await db.from("feed_state").select("*").eq("id", 1).maybeSing
 const row = state?.next_row || 1;
 const pattern = state?.pattern || JSON.parse(fs.readFileSync(path.join(ROOT, "tools/feed/seed_pattern.json"), "utf8"));
 
-// ---------- 使ってよい手を、届いた順に（1人1回・本人が最後に選んだ見え方） ----------
+// ---------- 使ってよい手を、参加番号の順に（1人1回・本人が最後に選んだ見え方。帰った順ではなく、来た順の番号でそろえる） ----------
 let sq = db.from("submissions").select("id, participant_no, image_path, feed_ok, feed_row, created_at").order("created_at", { ascending: true }).limit(5000);
 if (!DRY) sq = sq.eq("feed_ok", true).not("approved_at", "is", null);   // 本人が選び、運営者が承認したものだけ。試運転では同意に関係なく手を使う（描くだけで、投稿も保存もしない）
 const subs = must(await sq, "submissions");
 const used = new Set(subs.filter((s) => s.feed_row != null).map((s) => s.participant_no));
 const latest = new Map();
 for (const s of subs) if (!used.has(s.participant_no) && s.participant_no != null) latest.set(s.participant_no, s);
-const queue = [...latest.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+const queue = [...latest.values()].sort((a, b) => a.participant_no - b.participant_no);
 const need = DRY ? 1 : row === 1 ? 1 : 3;
 console.log(`${row}列目：使ってよい手 ${queue.length}人分（必要 ${need}人分）${DRY ? "【試運転】" : ""}`);
 if (queue.length < need) process.exit(0);
 
-// 1列目：真ん中に創始者（最初に届いた手）だけ。2列目から：左・真ん中・右に届いた順
+// 1列目：真ん中に創始者（番号のいちばん小さい手）だけ。2列目から：左・真ん中・右に参加番号の小さい順
 const picks = DRY ? [queue[1 % queue.length], queue[0], queue[2 % queue.length]]
   : row === 1 ? [null, queue[0], null] : queue.slice(0, 3);
 

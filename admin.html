@@ -122,7 +122,7 @@ td.n,th.n{text-align:right}
       <h2 style="margin:0">フィード（3枚で1列・糸の柄がつながる）</h2>
       <label class="toggle"><input type="checkbox" id="autoFeed"> 承認済みの「投稿にも使ってよい」の手が1列ぶんたまったら、自動で投稿する</label>
       <p class="hint" id="feedInfo"></p>
-      <p class="hint">1列目は真ん中に最初に届いた手（創始者）だけ、2列目からは届いた順に3人分を左・真ん中・右に並べ、公式投稿メーカーと同じ柄で描きます。投稿は右 → 真ん中 → 左の順（プロフィールで左上に来るのが左）。確認は15分ごとです。</p>
+      <p class="hint">1列目は真ん中に最初に届いた手（創始者）だけ、2列目からは参加番号の小さい順に3人分を左・真ん中・右に並べ、公式投稿メーカーと同じ柄で描きます。投稿は右 → 真ん中 → 左の順（プロフィールで左上に来るのが左）。確認は15分ごとです。</p>
       <label>投稿の文章（2列目から。{no} が参加番号になります。ストーリー画像の「◯人目のおともだち」と同じ番号です）<textarea id="capMain" rows="9"></textarea></label>
       <label>1列目・真ん中（創始者の手）の文章<textarea id="capFirst" rows="8"></textarea></label>
       <label>1列目・左右（手なし）の文章<textarea id="capBlank" rows="5"></textarea></label>
@@ -243,6 +243,7 @@ async function load(){
   if(subs.error){ say("読み込めませんでした（"+subs.error.message+"）。supabase.sql の管理者のメールアドレスを確認してください。",true); return; }
   all=subs.data; ADULT=new Set((adults.data||[]).map(p=>p.id));
   const seen=new Set(); latest=all.filter(r=>!seen.has(r.participant_no)&&seen.add(r.participant_no));
+  latest.sort((a,b)=>(a.participant_no??1e9)-(b.participant_no??1e9));   // 参加番号の順（帰った順ではなく）
   if(!latest.length && !all.length) say("");
   $("sPeople").textContent=people.count??"–";
   $("sHands").textContent=latest.length;
