@@ -94,6 +94,15 @@
       if (sb) return rpc("record_play", { p_device: deviceKey(), p_kinds: kinds, p_note: note || "" });
       const v = local.get(); const d = v.days?.[today()]; if (d) { d.play = { kinds, note }; local.put(v); } return "ok";
     },
+    // 帰る時に、来た時の記録が見つからない人が「18歳以上・同意して手を撮る」を押した時：参加者として登録し、今日の来場を（来た時刻なしで）作る
+    async joinLate() {
+      if (sb) return rpc("join_at_leave", { p_device: deviceKey(), p_spot: spot() });
+      const v = local.get(); v.days = v.days || {};
+      if (!v.no) v.no = (+ls.get("onigokko_demo_counter") || 0) + 1, ls.set("onigokko_demo_counter", v.no);
+      if (!v.days[today()]) v.days[today()] = { left: Date.now() };
+      local.put(v);
+      return { no: v.no };
+    },
     // 帰る時：滞在時間（分）と通算の回数を返す。来た時のQRを読んでいない端末は known:false
     async leave(feeling) {
       if (sb) {
@@ -104,7 +113,7 @@
       v.days = v.days || {}; const d = v.days[today()] || {};   // 来た時のQRを読んでいない日は、来場を作らない
       if (v.days[today()]) { if (!(feeling && d.left)) d.left = Date.now(); if (feeling) d.feeling = feeling; local.put(v); }
       return { known: true, no: v.no, visits: Object.keys(v.days).length, nickname: v.profile?.nickname || null,
-               has_profile: !!v.profile, adult: true, today: !!d.arrived,
+               has_profile: !!v.profile, adult: true, today: !!v.days[today()],
                minutes: d.arrived ? Math.round((d.left - d.arrived) / 60000) : null };
     },
   };

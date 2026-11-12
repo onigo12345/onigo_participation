@@ -70,10 +70,10 @@ const leaving = (async () => {
   for (let i = 0; i < 3 && !r; i++) { try { r = await window.Visit.leave(); } catch (e) { console.warn(e); await sleep(800 * (i + 1)); } }
   if (!r) { $("byeMsg").hidden = false; $("byeMsg").textContent = "記録できませんでした。電波の良い場所で、もう一度QRを読み込んでね。"; $("byeSkip").textContent = "つぎへ"; $("byeShoot").hidden = true; return; }
   me = r;
-  if (!r.known) {   // 来た時のQRを一度も読んでいない（18歳未満の人や、QRを使わずに参加した人）
-    $("byeMsg").hidden = false;
-    $("byeMsg").textContent = "今日も遊んでくれてありがとう！ 18歳以上の人は、次は来た時に赤いQRを読むと、帰りに手の画像がもらえるよ。";
-    $("byeShoot").hidden = true; $("byeSkip").textContent = "つぎへ"; return;
+  if (!r.known) {   // 来た時の記録がこのブラウザにない（赤いQRを別のアプリで開いた人・QRを使わずに参加した人など）
+    // 18歳以上なら、ここで同意して撮影に進める（押した時に参加者として登録する）
+    $("lateJoin").hidden = false; $("byeShoot").dataset.late = "1";
+    shootLabel("18歳以上・同意して手を撮る"); return;
   }
   myNo = r.no;
   stats();
@@ -87,7 +87,22 @@ function stats() {   // 遊んだ時間と通算の回数（言語を切り替�
   $("stay").innerHTML = fmt(me.today ? me.minutes : null);
   $("count").innerHTML = tr("{n}<small>回目</small>", { n: me.visits });
 }
-$("byeShoot").addEventListener("click", startCamera);
+function shootLabel(t) { const b = $("byeShoot"); b.lastChild.textContent = t; }
+$("byeShoot").addEventListener("click", async () => {
+  const b = $("byeShoot");
+  if (b.dataset.late) {   // 来た時の記録がない人：参加者として登録してから撮影へ
+    b.disabled = true;
+    try {
+      await window.Visit.joinLate();
+      const r = await window.Visit.leave();
+      if (!r?.known) throw new Error("not registered");
+      me = r; myNo = r.no; delete b.dataset.late;
+      $("lateJoin").hidden = true; $("stayNote").hidden = false; shootLabel("今日タッチした手を撮る"); stats();
+    } catch (e) { console.warn(e); toast(tr("記録できませんでした。電波の良い場所で、もう一度押してね。"), 4000); return; }
+    finally { b.disabled = false; }
+  }
+  startCamera();
+});
 $("byeSkip").addEventListener("click", () => startSurvey());
 
 /* ---------- アンケート（任意・1問ずつ）：初めての人だけプロフィール → 今日なにして遊んだ → 楽しかった度 ---------- */

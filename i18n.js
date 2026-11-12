@@ -58,6 +58,8 @@
     "今日は来た時のQRを読んでいなかったので、遊んだ時間は記録していません。": "You didn't scan the QR code when you arrived today, so your play time wasn't recorded.",
     "今日タッチした手を撮ると、あなただけのストーリー画像がもらえるよ": "Take a photo of the hand you tagged with today and get your own Story image",
     "今日タッチした手を撮る": "Photograph my tagging hand",
+    "18歳以上・同意して手を撮る": "I'm 18+ and agree - photograph my hand",
+    "記録できませんでした。電波の良い場所で、もう一度押してね。": "Couldn't save your record. Move somewhere with better signal and tap again.",
     "撮らずにすすむ": "Skip the photo",
     "記録できませんでした。電波の良い場所で、もう一度QRを読み込んでね。": "Couldn't save your record. Move somewhere with better signal and scan the QR code again.",
     "今日も遊んでくれてありがとう！ 18歳以上の人は、次は来た時に赤いQRを読むと、帰りに手の画像がもらえるよ。": "Thanks for playing today! If you're 18 or older, scan the red QR code when you arrive next time and you'll get a hand image when you leave.",
@@ -202,6 +204,7 @@
     surveyPrivacy: 'We only use your answers to help run the circle, and never publish them. <a href="privacy.html">Details</a>',
     nextH: "Thank you!<br>Let's play again",
     nextWhere: `There's no fixed date. We announce each game on ${IG}'s Instagram Story.`,
+    lateJoin: `We couldn't find your arrival record in this phone's browser (for example, if you opened the red QR code in another app). <b>If you're 18 or older, you can photograph your hand here.</b><small>Tapping the button below records a participant number and the time you left (no name or contact details). If you're under 18, tap "Skip the photo". <a href="privacy.html">Data we collect</a></small>`,
     nowFree: `No QR code needed, just ask <b>"Can I play?"</b><small>If you're 18 or older, scan the QR code to get a hand image when you leave</small>`,
     privacy: `
   <div>
@@ -211,7 +214,7 @@
   <section>
     <h2>What we collect</h2>
     <table>
-      <tr><th>Joining</th><td>The time you tap "Join (18 or older, agree to the notes)" on the arrival QR page. Just opening the page records nothing. People under 18 can join without the QR code, and nothing is recorded</td></tr>
+      <tr><th>Joining</th><td>The time you tap "Join (18 or older, agree to the notes)" on the arrival QR page (or, if we can't find your arrival record, the time you tap "I'm 18+ and agree - photograph my hand" on the leaving QR page). Just opening the page records nothing. People under 18 can join without the QR code, and nothing is recorded</td></tr>
       <tr><th>Survey (optional)</th><td>Answered when you leave: faculty, nickname (please don't use your real name), year (optional), gender (optional: male, female, other), how you heard about us (optional)</td></tr>
       <tr><th>Visits</th><td>Date, arrival time, leaving time ("not recorded" on days you didn't scan the leaving QR code), which QR code you came from, whether you made or shared an image, how much fun you had (optional), what you played today (optional; "Other" is free text)</td></tr>
       <tr><th>Images</th><td>A cut-out of only the area around "the hand you tagged with today", taken when you leave, and the Story image you received. If you chose "Soft" or "Strong blur", we save it that way</td></tr>

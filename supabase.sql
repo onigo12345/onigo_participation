@@ -225,6 +225,28 @@ begin
     'minutes', case when v.arrived_at is null then null else round(extract(epoch from (v.left_at - v.arrived_at)) / 60) end);
 end $$;
 
+-- 帰る時のQRで、来た時の記録が見つからない人（赤いQRを別のブラウザやアプリで開いた人など）：
+-- 「18歳以上・同意して手を撮る」を押した時だけ呼ぶ。参加者を登録（初回のみ）し、今日の来場を「来た時刻なし・帰った時刻あり」で記録する
+-- （来た時刻がないので、遊んだ時間・今の人数には数えない）
+create or replace function public.join_at_leave(p_device text, p_spot text default null) returns json
+  language plpgsql security definer set search_path = public as $$
+declare pid bigint; s text := null; today date := public._today();
+begin
+  if p_device is null or p_device !~ '^[0-9a-f]{32}$' then raise exception 'bad device'; end if;
+  select id into pid from participants where device_key = public._hash(p_device);
+  if pid is null then
+    insert into participants(device_key, source) values (public._hash(p_device), 'leave') returning id into pid;
+  end if;
+  update participants set adult_at = coalesce(adult_at, now()) where id = pid;
+  select token into s from spots where token = p_spot and active;
+  insert into visits(participant_no, spot, visit_date, left_at) values (pid, s, today, now())
+    on conflict (participant_no, visit_date) do update
+      set left_at = coalesce(visits.left_at, now()), spot = coalesce(visits.spot, excluded.spot);
+  return json_build_object('no', pid);
+end $$;
+revoke all on function public.join_at_leave(text, text) from public;
+grant execute on function public.join_at_leave(text, text) to anon, authenticated;
+
 -- 帰る時のアンケート：今日なにをして遊んだか（任意）。その場で生まれた遊びを記録する
 alter table visits add column if not exists play_kinds text[];   -- 鬼ごっこ／ケイドロ／その他
 alter table visits add column if not exists play_note  text;     -- その他の時の自由記述（200字まで）
