@@ -101,6 +101,10 @@ td.n,th.n{text-align:right}
       <button type="button" role="tab" data-tab="qr" aria-selected="false">QRをつくる</button>
     </nav>
     <div id="tab-images" style="display:grid;gap:18px">
+    <details class="igbox" id="addHandBox"><summary style="cursor:pointer;font-weight:900">運営者が撮った手を追加する（フィード用・ストーリーには投稿しない）</summary>
+      <p class="hint" style="margin:0">本人から投稿の了承をもらった「手の素材」（背景が透明なPNG）を、その人の参加番号に結びつけて追加します。「投稿にも使ってよい・承認済み」の状態で入り、フィードの自動投稿で参加番号の順に並びます。ストーリーには投稿しません。来場の記録・人数・アンケートは変わりません。</p>
+      <div class="tools"><input id="ahNo" type="number" min="1" inputmode="numeric" placeholder="参加番号" style="font:inherit;padding:8px;border:1px solid var(--line);width:120px"><input id="ahFile" type="file" accept="image/png"><button class="btn blue" id="ahGo" type="button">追加する</button><span class="hint" id="ahState"></span></div>
+    </details>
     <div class="bar">
       <div class="stats">
         <div class="stat"><b id="sPeople">–</b><span>参加者（番号を発行した数）</span></div>
@@ -200,6 +204,24 @@ const $=id=>document.getElementById(id);
 const LOOK={none:"そのまま",soft:"ふんわり",blur:"強くぼかす",shape:"かたちだけ"};
 const pad=n=>String(n||0).padStart(3,"0");
 let sb=null, latest=[], all=[], urls={}, view="all", ADULT=new Set();
+// 運営者が撮った手を追加（フィード用）
+async function addStaffHand(){
+  const no=parseInt($("ahNo").value,10), f=$("ahFile").files[0], st=$("ahState");
+  if(!(no>0)) return st.textContent="参加番号を入れてください";
+  if(!f||f.type!=="image/png") return st.textContent="手の素材（PNG）を選んでください";
+  if(f.size>2*1024*1024) return st.textContent="2MBより小さいPNGにしてください";
+  if(!confirm(`No.${pad(no)} の手として追加します。本人から投稿の了承をもらっていますか？`)) return;
+  $("ahGo").disabled=true; st.textContent="追加しています…";
+  try{
+    const path=`${pad(no)}_staff_${Date.now()}.png`;
+    const up=await sb.storage.from(BUCKET).upload(path,f,{contentType:"image/png"});
+    if(up.error) throw up.error;
+    const {error}=await sb.rpc("admin_add_hand",{p_no:no,p_image:path});
+    if(error){ await sb.storage.from(BUCKET).remove([path]); throw error; }
+    st.textContent=`No.${pad(no)} の手を追加しました（承認済み・フィード用）`; $("ahFile").value=""; load();
+  }catch(e){ st.textContent="追加できませんでした（"+(/no participant/.test(e.message)?"その参加番号はありません":e.message)+"）"; }
+  finally{ $("ahGo").disabled=false; }
+}
 function say(t,err){ const s=$("status"); s.textContent=t; s.classList.toggle("err",!!err); }
 
 if(!CFG.SUPABASE_URL||!CFG.SUPABASE_ANON_KEY||!window.supabase){
@@ -217,6 +239,7 @@ $("login").addEventListener("submit",async e=>{
 });
 $("logout").addEventListener("click",async()=>{ await sb.auth.signOut(); location.reload(); });
 $("reload").addEventListener("click",load);
+$("ahGo").addEventListener("click",addStaffHand);
 $("reload2").addEventListener("click",()=>loadData(true));
 $("filter").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; view=b.dataset.v;
   document.querySelectorAll("#filter button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render(); });

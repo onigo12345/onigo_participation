@@ -333,6 +333,9 @@ create policy "anyone can upload hand" on storage.objects for insert to anon
   with check (bucket_id = 'hands' and name ~ '^[0-9a-z_]+\.(png|jpg)$');
 create policy "admin reads hands"   on storage.objects for select to authenticated using (bucket_id = 'hands' and public.is_admin());
 create policy "admin deletes hands" on storage.objects for delete to authenticated using (bucket_id = 'hands' and public.is_admin());
+drop policy if exists "admin uploads hands" on storage.objects;
+create policy "admin uploads hands" on storage.objects for insert to authenticated
+  with check (bucket_id = 'hands' and public.is_admin() and name ~ '^[0-9a-z_]+\.png$');
 
 -- ---------- Instagramへの投稿 ----------
 -- ストーリー：参加者が「参加する！」の時に「載せる」を選んだ画像だけを、1日1回、自動で投稿する
@@ -397,6 +400,23 @@ begin
 end $$;
 revoke all on function public.give_consent(text, boolean, boolean) from public;
 grant execute on function public.give_consent(text, boolean, boolean) to anon, authenticated;
+
+-- 管理者：運営者が別に撮った手（本人から投稿の了承をもらったもの）を、参加番号に結びつけて追加する
+-- 「投稿にも使ってよい・承認済み」で入れ、フィードの順番待ちに並べる。ストーリーには投稿しない（story_path なし）
+-- 来場の記録・参加者の記録・人数は変えない
+create or replace function public.admin_add_hand(p_no bigint, p_image text) returns bigint
+  language plpgsql security definer set search_path = public as $$
+declare sid bigint;
+begin
+  if not public.is_admin() then raise exception 'not admin'; end if;
+  if not exists (select 1 from participants where id = p_no) then raise exception 'no participant'; end if;
+  if p_image !~ '^[0-9a-z_]+\.png$' then raise exception 'bad image'; end if;
+  insert into submissions(participant_no, image_path, story_path, consent, look, feed_ok, approved_at)
+    values (p_no, p_image, null, true, 'none', true, now()) returning id into sid;
+  return sid;
+end $$;
+revoke all on function public.admin_add_hand(bigint, text) from public, anon;
+grant execute on function public.admin_add_hand(bigint, text) to authenticated;
 
 -- サーバー（Edge Function）だけが使う：投稿してよい画像なら「投稿中」にして、画像の場所を返す
 create or replace function public.claim_story(p_id bigint, p_force boolean default false) returns text
