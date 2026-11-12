@@ -572,6 +572,22 @@ begin
   end if;
   return path;
 end $$;
+-- 終了QRのあと：開催した人が「今日どんな遊びをしたか」を書く（終了から24時間以内なら書き直せる。運営者だけが見る）
+alter table events add column if not exists play_kinds text[];
+alter table events add column if not exists play_note  text;
+alter table events add column if not exists play_noted_at timestamptz;
+create or replace function public.save_event_play(p_key text, p_id bigint, p_kinds text[], p_note text) returns text
+  language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from hosts where token = p_key and active) then return 'badkey'; end if;
+  if coalesce(array_length(p_kinds, 1), 0) > 12 or exists (select 1 from unnest(coalesce(p_kinds, '{}')) k where length(k) > 20)
+     or length(coalesce(p_note, '')) > 1000 then raise exception 'too long'; end if;
+  update events set play_kinds = p_kinds, play_note = nullif(btrim(p_note), ''), play_noted_at = now()
+   where id = p_id and (ended_at is null or ended_at > now() - interval '24 hours');
+  return case when found then 'ok' else 'closed' end;
+end $$;
+revoke all on function public.save_event_play(text, bigint, text[], text) from public;
+grant execute on function public.save_event_play(text, bigint, text[], text) to anon, authenticated;
 revoke all on function public.host_status(text), public.start_event(text, text), public.end_event(text, text) from public;
 grant execute on function public.host_status(text), public.start_event(text, text), public.end_event(text, text) to anon, authenticated;
 revoke all on function public.claim_event_story(bigint, text, text) from public, anon, authenticated;

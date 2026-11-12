@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>管理ページ｜つかまえた。</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=12">
+<link rel="stylesheet" href="fonts/fonts.css?v=13">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--orange:#f5821f;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;--line:#dedbe4;--panel:#fff;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -578,14 +578,15 @@ async function loadEvents(){
   const last=ev.data[0], days=last?Math.floor((Date.now()-new Date(last.started_at))/864e5):null;
   $("evWarn").hidden=!(last==null||days>=QUIET_DAYS);
   $("evWarn").textContent=last?`最近開かれていません（最後の開催は${days}日前・${last.host_name||"?"}さん）。開催キーを持つ人に声をかけてみてください。`:"まだ一度も開催されていません。開催キーを作って、開始QRを読んでください。";
-  const t=$("evList"); t.innerHTML="<tr><th>日時</th><th>開いた人</th><th>お知らせ</th><th></th></tr>";
+  const t=$("evList"); t.innerHTML="<tr><th>日時</th><th>開いた人</th><th>遊んだこと（開催した人の記録）</th><th>お知らせ</th><th></th></tr>";
   for(const e of ev.data){
     const tr=document.createElement("tr");
     const end=e.ended_at?jhm(e.ended_at):(e===open?"開催中":"（終了QRなし・日付で終了）");
     const ps=(path,at,label)=>!path?`${label}：写真なし`:at?`<span class="ok">${label}：投稿済み</span>`:`${label}：まだ`;
     const post=ps(e.story_path,e.story_posted_at,"開始")+"<br>"+(e.ended_at?ps(e.end_story_path,e.end_story_posted_at,"終了"):"終了：–")
       +(e.post_error?`<br><span class="posterr">${esc(e.post_error)}</span>`:"");
-    tr.innerHTML=`<td>${jtime(e.started_at)}〜${end}</td><td>${esc(e.host_name||"")}</td><td>${post}</td><td></td>`;
+    const play=(e.play_kinds?.length?`<b>${e.play_kinds.map(esc).join("・")}</b>`:"")+(e.play_note?`<br>${esc(e.play_note).replace(/\n/g,"<br>")}`:"");
+    tr.innerHTML=`<td>${jtime(e.started_at)}〜${end}</td><td>${esc(e.host_name||"")}</td><td>${play||"–"}</td><td>${post}</td><td></td>`;
     for(const [kind,path,at,label] of [["start",e.story_path,e.story_posted_at,"開始"],["end",e.end_story_path,e.end_story_posted_at,"終了"]]){
       if(!path||at) continue;
       const b=btn(`${label}のお知らせを投稿`,"blue",async()=>{ b.disabled=true;
@@ -593,7 +594,7 @@ async function loadEvents(){
       tr.lastChild.append(b); }
     t.append(tr);
   }
-  if(!ev.data.length) t.insertAdjacentHTML("beforeend",'<tr><td colspan="4">まだありません。</td></tr>');
+  if(!ev.data.length) t.insertAdjacentHTML("beforeend",'<tr><td colspan="5">まだありません。</td></tr>');
   const h=$("hostList"); h.innerHTML="<tr><th>名前</th><th>状態</th><th>開催した回数</th><th></th></tr>";
   for(const k of hs.data){
     const n=ev.data.filter(e=>e.host===k.token).length, tr=document.createElement("tr");

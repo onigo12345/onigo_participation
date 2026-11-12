@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#faf8f4">
 <meta name="robots" content="noindex">
 <title>開催キー｜立命館OIC 鬼ごっこサークル</title>
-<link rel="stylesheet" href="fonts/fonts.css?v=12">
+<link rel="stylesheet" href="fonts/fonts.css?v=13">
 <style>
 :root{--red:#e82c34;--blue:#1c48c4;--purple:#9a26d9;--paper:#faf8f4;--ink:#19161e;--muted:#6d6878;
   --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif}
@@ -32,6 +32,10 @@ label.btn{cursor:pointer}
 .small{margin:0;font-size:.8rem;color:var(--muted);line-height:1.6;text-align:center}
 .small button{font:inherit;background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;cursor:pointer}
 .big{font-size:clamp(2rem,10vw,2.8rem);font-weight:900;color:var(--blue);font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.chips button{font:inherit;font-weight:700;font-size:.9rem;padding:9px 13px;border:1.5px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer}
+.chips button[aria-pressed=true]{background:var(--blue);border-color:var(--blue);color:#fff}
+textarea.memo{width:100%;box-sizing:border-box;font:inherit;font-size:.95rem;padding:10px;border:1.5px solid var(--ink);min-height:110px;margin-top:4px}
 </style>
 </head>
 <body>
@@ -100,6 +104,16 @@ label.btn{cursor:pointer}
     <h1 class="blue">おつかれさま！</h1>
     <p class="lead" id="endedInfo"></p>
     <p class="lead" id="endedPost"></p>
+    <div class="box" id="playBox">
+      <b>今日はどんな遊びをした？</b>
+      当てはまるものを選んでください（いくつでも）。
+      <div class="chips" id="playKinds">
+        <button type="button" aria-pressed="false">鬼ごっこ</button><button type="button" aria-pressed="false">ケイドロ</button><button type="button" aria-pressed="false">増え鬼</button><button type="button" aria-pressed="false">氷鬼</button><button type="button" aria-pressed="false">色鬼</button><button type="button" aria-pressed="false">高鬼</button><button type="button" aria-pressed="false">しっぽ取り</button><button type="button" aria-pressed="false">その他</button>
+      </div>
+      <textarea class="memo" id="playNote" maxlength="1000" placeholder="ルール・工夫したこと・盛り上がった場面・次に試したいことなど"></textarea>
+      <span class="small">人の名前や連絡先は書かないでください。サークルの記録として、運営者だけが見ます。終了から24時間以内なら書き直せます。</span>
+    </div>
+    <button class="btn blue" id="playSave" type="button">記録する</button>
   </section>
   <section id="v-none" hidden style="display:grid;gap:14px">
     <h1 class="blue">今は開催して<br>いません</h1>
@@ -215,11 +229,28 @@ async function finishEvent(withPhoto) {
     if (r.status === "none") return view("v-none");
     $("endedInfo").textContent = `${hm(r.started_at)}〜${hm(r.ended_at)}　QRで参加した人：${r.joined}人`;
     $("endedPost").textContent = path ? "ストーリーに投稿しています…" : "";
-    view("v-ended");
+    endedId = r.id; view("v-ended");
     if (path) $("endedPost").textContent = await postStory(r.id, "end");
   } catch (e) { console.warn(e); toast("終了できませんでした。もう一度押してください。"); }
   finally { btns.forEach((b) => (b.disabled = false)); }
 }
+/* ---------- 今日どんな遊びをしたか（終了のあと） ---------- */
+let endedId = null;
+for (const b of document.querySelectorAll("#playKinds button"))
+  b.addEventListener("click", () => b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") === "true" ? "false" : "true"));
+$("playSave").addEventListener("click", async () => {
+  const kinds = [...document.querySelectorAll('#playKinds button[aria-pressed="true"]')].map((b) => b.textContent.trim());
+  const note = $("playNote").value.trim();
+  if (!kinds.length && !note) return toast("遊びを選ぶか、ひとこと書いてください");
+  const b = $("playSave"); b.disabled = true;
+  try {
+    const r = await rpc("save_event_play", { p_key: KEY, p_id: endedId, p_kinds: kinds, p_note: note });
+    if (r === "badkey") return view("v-bad");
+    if (r === "closed") return toast("終了から24時間を過ぎたので、書き直せません");
+    toast("記録しました。ありがとう！"); b.textContent = "書き直して記録する";
+  } catch (e) { console.warn(e); toast("記録できませんでした。電波の良い場所でもう一度押してください。"); }
+  finally { b.disabled = false; }
+});
 init();
 </script>
 </body>
