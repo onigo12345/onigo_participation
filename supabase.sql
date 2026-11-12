@@ -466,7 +466,9 @@ alter table settings add column if not exists feed_caption_first text not null d
 alter table settings add column if not exists feed_caption_blank text not null default
   '#鬼ごっこサークル
 #立命館大学';
-grant update (auto_feed, feed_caption, feed_caption_first, feed_caption_blank) on settings to authenticated;
+-- 管理ページの「今ある手で次の列を投稿する」：次の1回だけ、3人に満たなくても列を作る（足りない所は手なし）
+alter table settings add column if not exists feed_force boolean not null default false;
+grant update (auto_feed, feed_force, feed_caption, feed_caption_first, feed_caption_blank) on settings to authenticated;
 
 create table if not exists feed_rows (
   row_no int primary key,

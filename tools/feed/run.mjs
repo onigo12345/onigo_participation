@@ -26,7 +26,7 @@ const must = ({ data, error }, what) => { if (error) throw new Error(`${what}: $
 // ---------- 今やることがあるか ----------
 // 試運転（DRY_RUN=1）：画像の読み込み・柄の描画・保存ができるかだけを確かめる。投稿も記録もしない
 const DRY = process.env.DRY_RUN === "1";
-const st = must(await db.from("settings").select("auto_feed, feed_caption, feed_caption_first, feed_caption_blank").eq("id", 1).maybeSingle(), "settings");
+const st = must(await db.from("settings").select("auto_feed, feed_force, feed_caption, feed_caption_first, feed_caption_blank").eq("id", 1).maybeSingle(), "settings");
 if (!st?.auto_feed && !DRY) { console.log("フィードの自動投稿はオフです"); process.exit(0); }
 
 // 前の列がまだ投稿し終わっていなければ、新しい列は作らない（柄と順番がずれないように）
@@ -50,13 +50,14 @@ const used = new Set(subs.filter((s) => s.feed_row != null).map((s) => s.partici
 const latest = new Map();
 for (const s of subs) if (!used.has(s.participant_no) && s.participant_no != null) latest.set(s.participant_no, s);
 const queue = [...latest.values()].sort((a, b) => a.participant_no - b.participant_no);
-const need = DRY ? 1 : row === 1 ? 1 : 3;
+const force = !DRY && row > 1 && !!st.feed_force;   // 管理ページの「今ある手で次の列を投稿する」：3人に満たなくても、足りない所は手なしで作る
+const need = DRY ? 1 : row === 1 ? 1 : force ? 1 : 3;
 console.log(`${row}列目：使ってよい手 ${queue.length}人分（必要 ${need}人分）${DRY ? "【試運転】" : ""}`);
 if (queue.length < need) process.exit(0);
 
 // 1列目：真ん中に創始者（番号のいちばん小さい手）だけ。2列目から：左・真ん中・右に参加番号の小さい順
 const picks = DRY ? [queue[1 % queue.length], queue[0], queue[2 % queue.length]]
-  : row === 1 ? [null, queue[0], null] : queue.slice(0, 3);
+  : row === 1 ? [null, queue[0], null] : [0, 1, 2].map((i) => queue[i] || null);
 
 // ---------- 手の画像を読み込む ----------
 const hands = [];
@@ -96,6 +97,7 @@ if (DRY) {
 // ---------- 保存して「投稿待ち」の列を作る ----------
 const caption = (i) => {
   if (row === 1) return i === 1 ? st.feed_caption_first : st.feed_caption_blank;
+  if (!picks[i]) return st.feed_caption_blank;   // 手なしのマス
   return String(st.feed_caption || "").replaceAll("{no}", String(picks[i].participant_no));
 };
 const stamp = Date.now();
@@ -110,6 +112,7 @@ for (let i = 0; i < 3; i++) {
 must(await db.from("feed_rows").insert({ row_no: row, status: "ready" }), "feed_rows insert");
 must(await db.from("feed_posts").insert(posts), "feed_posts insert");
 for (const p of picks) if (p) must(await db.from("submissions").update({ feed_row: row }).eq("id", p.id), "submissions");
+if (force) must(await db.from("settings").update({ feed_force: false }).eq("id", 1), "settings");
 must(await db.from("feed_state").upsert({ id: 1, pattern: out.pattern, next_row: row + 1, updated_at: new Date().toISOString() }), "feed_state");
 console.log(`${row}列目を作りました：` + picks.map((p, i) => `${POS[i]}=${p ? "No." + p.participant_no : "手なし"}`).join(" / "));
 

@@ -151,7 +151,7 @@ window.renderRow=async ({row, pattern, hands})=>{
     if(img && !(first && i!==1)){ const rim=withRim(img,Math.round(img.width*0.035)+6);
       const sc=Math.min(940/rim.width,1300/rim.height), w=rim.width*sc, h=rim.height*sc;
       g.drawImage(rim,(TW-w)/2,TH-h+Math.round(h*0.04),w,h); }
-    if(!first){ const lab="No."+String(hands[i]?.no||0).padStart(3,"0"); g.font='700 30px "Noto Sans JP",sans-serif'; g.textBaseline="top";
+    if(!first && hands[i]){ const lab="No."+String(hands[i]?.no||0).padStart(3,"0"); g.font='700 30px "Noto Sans JP",sans-serif'; g.textBaseline="top";
       const lw=g.measureText(lab).width; g.fillStyle=C.paper; g.fillRect((TW-lw)/2-16,48,lw+32,48);
       g.fillStyle=C.ink; g.textAlign="center"; g.fillText(lab,TW/2,56); g.textAlign="left"; }
     const id=g.getImageData(0,0,TW,TH),a=id.data; for(let p=0;p<a.length;p+=4){const n=1-Math.random()*.03;a[p]*=n;a[p+1]*=n;a[p+2]*=n;} g.putImageData(id,0,0);

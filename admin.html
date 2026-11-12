@@ -127,6 +127,7 @@ td.n,th.n{text-align:right}
       <label>1列目・真ん中（創始者の手）の文章<textarea id="capFirst" rows="8"></textarea></label>
       <label>1列目・左右（手なし）の文章<textarea id="capBlank" rows="5"></textarea></label>
       <div class="tools"><button class="btn blue" id="capSave" type="button">文章を保存</button><span class="hint" id="capState"></span></div>
+      <div class="tools"><button class="btn ghost" id="feedForce" type="button" hidden></button></div>
       <div class="tablewrap"><table id="feedRows"></table></div>
     </div>
     <div class="filter" id="filter" role="group" aria-label="見え方で絞り込む">
@@ -240,6 +241,13 @@ $("login").addEventListener("submit",async e=>{
 $("logout").addEventListener("click",async()=>{ await sb.auth.signOut(); location.reload(); });
 $("reload").addEventListener("click",load);
 $("ahGo").addEventListener("click",addStaffHand);
+$("feedForce").addEventListener("click",async()=>{
+  if(!$("autoFeed").checked) return alert("先に「フィードの自動投稿」をオンにしてください。");
+  if(!confirm("3人に満たないまま、次の列を作って投稿します（足りない所は手なしの背景だけになります）。よいですか？")) return;
+  const {error}=await sb.from("settings").update({feed_force:true}).eq("id",1);
+  if(error) return alert("予約できませんでした（"+error.message+"）。supabase.sql を実行し直してください。");
+  loadFeed();
+});
 $("reload2").addEventListener("click",()=>loadData(true));
 $("filter").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; view=b.dataset.v;
   document.querySelectorAll("#filter button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render(); });
@@ -356,7 +364,8 @@ $("igCheck").addEventListener("click",async()=>{
 });
 const ROWST={ready:"投稿待ち",posting:"投稿中",posted:"投稿済み",error:"失敗"};
 async function loadFeed(){
-  const {data:st,error}=await sb.from("settings").select("auto_feed,feed_caption,feed_caption_first,feed_caption_blank").eq("id",1).maybeSingle();
+  let {data:st,error}=await sb.from("settings").select("auto_feed,feed_force,feed_caption,feed_caption_first,feed_caption_blank").eq("id",1).maybeSingle();
+  if(error&&/feed_force/.test(error.message)) ({data:st,error}=await sb.from("settings").select("auto_feed,feed_caption,feed_caption_first,feed_caption_blank").eq("id",1).maybeSingle());
   if(error||!st){ $("feedbox").hidden=true; return; }
   $("feedbox").hidden=false; $("autoFeed").checked=st.auto_feed;
   if(!$("capMain").dataset.dirty){ $("capMain").value=st.feed_caption; $("capFirst").value=st.feed_caption_first; $("capBlank").value=st.feed_caption_blank; }
@@ -368,7 +377,8 @@ async function loadFeed(){
   const waiting=new Set(all.filter(r=>r.feed_ok&&r.approved_at&&r.feed_row==null).map(r=>r.participant_no));
   const used=new Set(all.filter(r=>r.feed_row!=null).map(r=>r.participant_no));
   const n=[...waiting].filter(x=>!used.has(x)).length;
-  $("feedInfo").textContent=`次は${next}列目。承認済みの「投稿にも使ってよい」の手：${n}人分（あと${Math.max(0,need-n)}人分で投稿）`;
+  $("feedInfo").textContent=`次は${next}列目。承認済みの「投稿にも使ってよい」の手：${n}人分（あと${Math.max(0,need-n)}人分で投稿）`+(st.feed_force?"　→ 今ある手で次の列を作る予約中（15分以内）":"");
+  const fb=$("feedForce"); fb.hidden=!(next>1&&n>=1&&n<need); fb.disabled=!!st.feed_force; fb.textContent=st.feed_force?"予約しました（15分以内に作ります）":`今ある${n}人分で次の列を投稿する（足りない所は手なし）`;
   const t=$("feedRows"); t.innerHTML="<tr><th>列</th><th>状態</th><th>左・真ん中・右</th><th></th></tr>";
   for(const r of rows.data||[]){
     const ps=(posts.data||[]).filter(p=>p.row_no===r.row_no).sort((a,b)=>a.pos-b.pos);
