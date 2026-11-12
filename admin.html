@@ -333,7 +333,7 @@ async function load(){
   if(subs.error){ say("読み込めませんでした（"+subs.error.message+"）。supabase.sql の管理者のメールアドレスを確認してください。",true); return; }
   all=subs.data; ADULT=new Set((adults.data||[]).map(p=>p.id));
   const seen=new Set(); latest=all.filter(r=>!seen.has(r.participant_no)&&seen.add(r.participant_no));
-  latest.sort((a,b)=>(a.participant_no??1e9)-(b.participant_no??1e9));   // 参加番号の順（帰った順ではなく）
+  latest.sort((a,b)=>(b.participant_no??-1)-(a.participant_no??-1));   // Instagramのプロフィールの見た目どおり：新しい番号（大きい番号）が先頭
   if(!latest.length && !all.length) say("");
   $("sPeople").textContent=people.count??"–";
   $("sHands").textContent=latest.length;
@@ -447,13 +447,13 @@ async function loadFeed(){
     :next===1?"今すぐ投稿する（1列目）"
     :n>=3?"今すぐ投稿する（3人分で1列）"
     :`今の枚数分だけ今すぐ投稿する（${n}人分。右から並べ、あいた左は次の人の手で埋める）`;
-  const t=$("feedRows"); t.innerHTML="<tr><th>列</th><th>状態</th><th>投稿した順（番号の小さい順）</th><th></th></tr>";
+  const t=$("feedRows"); t.innerHTML="<tr><th>列</th><th>状態</th><th>プロフィールでの並び（左｜真ん中｜右）</th><th></th></tr>";
   for(const r of rows.data||[]){
     const ps=(posts.data||[]).filter(p=>p.row_no===r.row_no).sort((a,b)=>a.pos-b.pos);
     const tr=document.createElement("tr");
-    // 投稿した順（右 → 真ん中 → 左）に表示する。番号の小さい人から先に投稿される
-    const cells=[2,1,0].map(i=>{ const p=ps.find(x=>x.pos===i), w=["左","真ん中","右"][i]; return `${w}：`+(p?(p.participant_no?"No."+pad(p.participant_no):"手なし"):i<(r.open_slots||0)?"次の人":"手なし"); });
-    tr.innerHTML=`<td>${r.row_no}列目</td><td>${ROWST[r.status]||r.status}${r.open_slots?"（左があいています）":""}${r.error?`<br><span class="posterr">${esc(r.error)}</span>`:""}</td><td>${cells.join(" → ")}</td><td></td>`;
+    // Instagramのプロフィールの見た目どおり（左・真ん中・右）。投稿は右 → 真ん中 → 左の順（番号の小さい人から）
+    const cells=[0,1,2].map(i=>{ const p=ps.find(x=>x.pos===i), w=["左","真ん中","右"][i]; return `${w}：`+(p?(p.participant_no?"No."+pad(p.participant_no):"手なし"):i<(r.open_slots||0)?"次の人":"手なし"); });
+    tr.innerHTML=`<td>${r.row_no}列目</td><td>${ROWST[r.status]||r.status}${r.open_slots?"（左があいています）":""}${r.error?`<br><span class="posterr">${esc(r.error)}</span>`:""}</td><td>${cells.join("｜")}</td><td></td>`;
     const stuck=r.status==="posting" && Date.now()-new Date(r.created_at).getTime()>15*60*1000;   // 15分以上「投稿中」のまま
     if(r.status==="error"||stuck){ const b=btn(stuck?"止まっているのでやり直す":"もう一度投稿","blue",async()=>{ b.disabled=true; b.textContent="投稿中…";
       try{ await ig({retryFeedRow:r.row_no}); say(`${r.row_no}列目を投稿しました。`); }catch(e){ say("投稿できませんでした（"+e.message+"）",true); } loadFeed(); });
